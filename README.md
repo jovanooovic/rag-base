@@ -127,6 +127,12 @@ console (no framework, no build step) at `http://localhost:8000` for demoing
 the pipeline to someone who isn't going to read `curl` output. Same citations,
 refusals and cost/latency numbers the API returns, just legible.
 
+`http://localhost:8000/admin.html` uploads and indexes files directly (not
+linked from the chat page, not in the sitemap). It calls `POST /upload`, which
+-- like `POST /ingest` -- is a no-op-gated behind an `X-Admin-Token` header:
+open with no `APP_ADMIN_TOKEN` set, enforced the moment you set one. Set it
+before putting the API anywhere reachable by someone other than you.
+
 No API key needed for the first three — `llm_provider: "mock"` runs the entire pipeline
 offline with a deterministic fake model, so every code path (including the eval judge)
 runs in CI with no spend. Point it at a real model when you're ready:
@@ -253,9 +259,9 @@ app/store/        SQLiteStore (default), PgVectorStore (scale), shared interface
 app/retrieve/     BM25, RRF hybrid, LLM + cross-encoder reranker, multi-turn query rewriting
 app/answer/       cited generation, refusal guardrails, PII redaction
 app/evaluation/   the RAG-specific adapter into core/eval, and the golden-set bootstrapper
-app/api.py        FastAPI: /ask /ingest /documents /health, serves web/ at "/"
+app/api.py        FastAPI: /ask /ingest /upload /documents /health, serves web/ at "/"
 app/cli.py        ingest, ask, chat, stats, bootstrap-eval
-web/              chat console (vanilla HTML/CSS/JS, no build step)
+web/              chat console + admin.html upload panel (vanilla JS, no build step)
 eval/             golden set, calibration template, ablations, HTML/PNG report tooling
 intake/           the client questionnaire
 ```

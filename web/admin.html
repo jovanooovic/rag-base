@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>rag-base · admin</title>
+<meta name="robots" content="noindex, nofollow" />
+<link rel="icon" href="data:," />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+<div class="app app--admin">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">rag</span><span class="brand-mark brand-mark--muted">-base</span>
+      <span class="admin-badge">admin</span>
+    </div>
+    <div class="topbar-right">
+      <a class="icon-btn admin-back" href="/" title="Back to chat">&larr;</a>
+      <button class="icon-btn" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
+        <svg id="icon-sun" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.2" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.3v1.4M8 13.3v1.4M2.7 8H1.3M14.7 8h-1.4M3.5 3.5l1 1M11.5 11.5l1 1M12.5 3.5l-1 1M4.5 11.5l-1 1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <svg id="icon-moon" width="16" height="16" viewBox="0 0 16 16" fill="none" style="display:none"><path d="M13.5 9.7A5.8 5.8 0 1 1 6.3 2.5a5 5 0 0 0 7.2 7.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="admin-main">
+
+    <section class="admin-card">
+      <h2>Admin token</h2>
+      <p class="admin-sub">Kept in this browser's local storage only, sent as <code>X-Admin-Token</code>.</p>
+      <div class="token-row">
+        <input type="password" id="token-input" placeholder="APP_ADMIN_TOKEN value" autocomplete="off" />
+        <button class="btn" id="token-save">Save</button>
+      </div>
+      <p class="token-state" id="token-state"></p>
+    </section>
+
+    <section class="admin-card">
+      <h2>Index a document</h2>
+      <p class="admin-sub">Supported: .txt .md .markdown .html .htm .csv .json .pdf &middot; 15MB per file, 10 files per batch.</p>
+
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="file-input" multiple hidden
+          accept=".txt,.md,.markdown,.html,.htm,.csv,.json,.pdf" />
+        <p class="dropzone-label">Drop files here, or <span class="dropzone-link">browse</span></p>
+      </div>
+
+      <ul class="file-list" id="file-list"></ul>
+
+      <button class="btn btn--primary" id="ingest-btn" disabled>Ingest</button>
+      <div class="ingest-result" id="ingest-result"></div>
+    </section>
+
+    <section class="admin-card">
+      <h2>Currently indexed</h2>
+      <div class="doc-table" id="doc-table"><p class="admin-sub">Loading&hellip;</p></div>
+    </section>
+
+  </main>
+
+</div>
+
+<script src="admin.js"></script>
+</body>
+</html>

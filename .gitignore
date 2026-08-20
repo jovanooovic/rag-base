@@ -5,6 +5,7 @@ venv/
 .env
 data/*.db
 data/ingest_state.json
+data/uploads/
 traces/
 eval/report/
 eval/golden.generated.jsonl

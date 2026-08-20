@@ -1,20 +1,27 @@
 from __future__ import annotations
 
+import os
+import re
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .core.config import Settings
 from .core.providers import Message
 from .core.trace import Trace
+from .ingest.loaders import SUPPORTED as SUPPORTED_EXTENSIONS
 from .pipeline import RAGPipeline, build_store
 
 app = FastAPI(title="RAG base", version="0.1.0",
               description="Retrieval-augmented answering over a client corpus.")
+
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024   # 15 MB per file
+MAX_FILES_PER_UPLOAD = 10
 
 
 @lru_cache(maxsize=1)
@@ -51,6 +58,25 @@ class IngestRequest(BaseModel):
     path: str
 
 
+def require_admin(x_admin_token: str = Header(default="", alias="X-Admin-Token")) -> None:
+    """Gate write endpoints with a shared-secret header.
+
+    A no-op when APP_ADMIN_TOKEN is unset, so local dev and the existing test
+    suite keep working untouched. Set it before exposing the API publicly --
+    /ingest and /upload otherwise let anyone who can reach the port index
+    whatever they want into the corpus.
+    """
+    token = os.environ.get("APP_ADMIN_TOKEN", "")
+    if token and x_admin_token != token:
+        raise HTTPException(401, "missing or invalid admin token")
+
+
+def _safe_filename(name: str) -> str:
+    name = Path(name).name  # strip any directory components -- no path traversal
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip("._") or "upload"
+    return name
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     s = get_settings()
@@ -68,21 +94,55 @@ def ask(req: AskRequest, pipeline: RAGPipeline = Depends(get_pipeline)) -> dict[
     return result.as_dict()
 
 
-@app.post("/ingest")
+@app.post("/ingest", dependencies=[Depends(require_admin)])
 def ingest(req: IngestRequest, pipeline: RAGPipeline = Depends(get_pipeline)) -> dict[str, Any]:
-    """Ingest a path on the server.
-
-    Left as a server-side path rather than an upload endpoint on purpose: in
-    every client deployment so far the corpus arrives via a mounted volume, an
-    S3 sync, or a scheduled export -- not via someone POSTing a file. Add an
-    upload route when a client actually needs one, and put auth in front of it.
-    """
+    """Ingest a path already on the server -- a mounted volume, an S3 sync,
+    a scheduled export. Auth-gated: see require_admin."""
     try:
         report = pipeline.ingest(req.path)
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     get_store.cache_clear()
     return report.as_dict()
+
+
+@app.post("/upload", dependencies=[Depends(require_admin)])
+async def upload(files: list[UploadFile] = File(...),
+                  pipeline: RAGPipeline = Depends(get_pipeline)) -> dict[str, Any]:
+    """Accept files directly, for a demo corpus with no server filesystem
+    access. Auth-gated -- this writes to disk and triggers embedding calls,
+    neither of which a public client-facing deployment should hand out for free.
+    """
+    if not files:
+        raise HTTPException(400, "no files in request")
+    if len(files) > MAX_FILES_PER_UPLOAD:
+        raise HTTPException(400, f"at most {MAX_FILES_PER_UPLOAD} files per request")
+
+    settings = get_settings()
+    upload_dir = Path(settings.data_dir) / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    saved: list[str] = []
+    for f in files:
+        ext = Path(f.filename or "").suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            raise HTTPException(
+                415, f"unsupported file type '{ext}' ({f.filename}) -- "
+                     f"supported: {', '.join(SUPPORTED_EXTENSIONS)}")
+        body = await f.read(MAX_UPLOAD_BYTES + 1)
+        if len(body) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                413, f"{f.filename} exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)}MB limit")
+        dest = upload_dir / f"{uuid.uuid4().hex[:8]}_{_safe_filename(f.filename or 'upload')}"
+        dest.write_bytes(body)
+        saved.append(dest.name)
+
+    try:
+        report = pipeline.ingest(upload_dir)
+    except RuntimeError as exc:  # e.g. a .pdf with pypdf not installed
+        raise HTTPException(422, str(exc)) from exc
+    get_store.cache_clear()
+    return {**report.as_dict(), "saved_files": saved}
 
 
 @app.get("/documents")
