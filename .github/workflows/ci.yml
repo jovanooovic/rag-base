@@ -1,0 +1,22 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements-dev.txt
+      - run: cp project.config.example.json project.config.json
+      - run: python -m pytest tests -q
+      - run: python -m mypy core/eval --strict --follow-imports=silent
+      - run: python -m ruff check core/eval
+      - run: python -m app.cli ingest data/sample
+      # The eval suite runs on the mock provider: no key, no spend, and it
+      # still catches a retrieval regression before a client does. Baseline
+      # comparison and regression gating live in eval.yml.
+      - run: >
+          python -m core.eval run --suite eval/data/golden.jsonl
+          --adapter app.evaluation.rag_adapter:build_adapter --out /tmp/report

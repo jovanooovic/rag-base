@@ -1,0 +1,72 @@
+name: eval
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements-dev.txt
+      - run: cp project.config.example.json project.config.json
+      - run: python -m app.cli ingest data/sample
+
+      # Regression gate: this PR's mock-provider run vs. the committed baseline
+      # (also produced on the mock provider). Meaningful even though the mock
+      # provider's absolute numbers aren't representative of a real model, because
+      # comparing mock-vs-mock still catches a genuine break in the retrieval or
+      # generation pipeline -- a broken chunking change, a broken RRF fusion, a
+      # guardrail that stopped firing. This is what fails the build.
+      - name: Run eval suite and gate on regression
+        run: >
+          python -m core.eval run --suite eval/data/golden.jsonl
+          --adapter app.evaluation.rag_adapter:build_adapter
+          --out eval/report --label ci
+          --baseline eval/baseline.json --fail-on-regression
+
+      # Absolute quality floors (faithfulness >= 0.85, refusal_accuracy >= 0.90) are
+      # a real-model bar, not something the mock provider can be expected to clear --
+      # MockLLM's answer synthesis and guardrail heuristics are lexical, not semantic.
+      # Reported for visibility on every PR; not blocking, because gating free mock-CI
+      # on a target it structurally cannot hit would make the badge permanently red.
+      # Run this against a real-provider result (see CONTRIBUTING.md) before it should
+      # ever block a merge.
+      - name: Check absolute quality floors (informational on the mock provider)
+        continue-on-error: true
+        run: python -m eval.check_thresholds eval/report/latest.json
+
+      - name: Upload eval report
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: eval/report/
+
+      - name: Post scorecard as PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = "## Eval scorecard\n\n" + fs.readFileSync('eval/report/latest.md', 'utf8');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const marker = "## Eval scorecard";
+            const existing = comments.find(c => c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.issue.number, body,
+              });
+            }

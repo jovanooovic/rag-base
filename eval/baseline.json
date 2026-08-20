@@ -1,0 +1,353 @@
+{
+  "label": "baseline",
+  "n_cases": 135,
+  "meta": {
+    "git_sha": "no-git"
+  },
+  "baseline": null,
+  "metrics": [
+    {
+      "name": "mrr",
+      "value": 0.9302,
+      "ci": [
+        0.8931,
+        0.963
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "recall@1",
+      "value": 0.7222,
+      "ci": [
+        0.6528,
+        0.787
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "precision@1",
+      "value": 0.8704,
+      "ci": [
+        0.8056,
+        0.9259
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "hit_rate@1",
+      "value": 0.8704,
+      "ci": [
+        0.8056,
+        0.9259
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "ndcg@1",
+      "value": 0.8704,
+      "ci": [
+        0.8056,
+        0.9259
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "recall@3",
+      "value": 0.9306,
+      "ci": [
+        0.8935,
+        0.963
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "precision@3",
+      "value": 0.4043,
+      "ci": [
+        0.3796,
+        0.4321
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "hit_rate@3",
+      "value": 0.9907,
+      "ci": [
+        0.9722,
+        1.0
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "ndcg@3",
+      "value": 0.8992,
+      "ci": [
+        0.8617,
+        0.9327
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "recall@5",
+      "value": 0.963,
+      "ci": [
+        0.9352,
+        0.9861
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "precision@5",
+      "value": 0.2556,
+      "ci": [
+        0.237,
+        0.2741
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "hit_rate@5",
+      "value": 0.9907,
+      "ci": [
+        0.9722,
+        1.0
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "ndcg@5",
+      "value": 0.9161,
+      "ci": [
+        0.8826,
+        0.9464
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "recall@10",
+      "value": 1.0,
+      "ci": [
+        1.0,
+        1.0
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "precision@10",
+      "value": 0.1366,
+      "ci": [
+        0.1276,
+        0.1458
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "hit_rate@10",
+      "value": 1.0,
+      "ci": [
+        1.0,
+        1.0
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "ndcg@10",
+      "value": 0.9297,
+      "ci": [
+        0.9024,
+        0.9545
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "citation_precision",
+      "value": 0.7234,
+      "ci": [
+        0.6436,
+        0.7979
+      ],
+      "n": 94,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "citation_recall",
+      "value": 0.6528,
+      "ci": [
+        0.5694,
+        0.7361
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "refusal_accuracy",
+      "value": 0.7037,
+      "ci": [
+        0.5185,
+        0.8519
+      ],
+      "n": 27,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "clarification_rate",
+      "value": 0.0,
+      "ci": [
+        0.0,
+        0.0
+      ],
+      "n": 13,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "answer_correctness",
+      "value": 0.5255,
+      "ci": [
+        0.4468,
+        0.6042
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {
+        "mean_judge_disagreement": 0.0
+      },
+      "delta": null
+    },
+    {
+      "name": "faithfulness",
+      "value": 0.9484,
+      "ci": [
+        0.9432,
+        0.9534
+      ],
+      "n": 94,
+      "higher_is_better": true,
+      "extra": {
+        "mean_judge_disagreement": 0.0
+      },
+      "delta": null
+    },
+    {
+      "name": "cost_per_task_usd",
+      "value": 0.0,
+      "ci": [
+        0.0,
+        0.0
+      ],
+      "n": 135,
+      "higher_is_better": false,
+      "extra": {
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "delta": null
+    },
+    {
+      "name": "latency_total_ms",
+      "value": 153.4556,
+      "ci": [
+        147.5407,
+        159.403
+      ],
+      "n": 135,
+      "higher_is_better": false,
+      "extra": {
+        "p50": 153.1,
+        "p95": 203.5,
+        "p99": 219.1
+      },
+      "delta": null
+    },
+    {
+      "name": "latency_retrieve_ms",
+      "value": 130.0954,
+      "ci": [
+        124.757,
+        135.5081
+      ],
+      "n": 135,
+      "higher_is_better": false,
+      "extra": {
+        "p50": 129.73,
+        "p95": 192.27,
+        "p99": 201.62
+      },
+      "delta": null
+    },
+    {
+      "name": "latency_answer_ms",
+      "value": 0.1659,
+      "ci": [
+        0.1602,
+        0.1715
+      ],
+      "n": 135,
+      "higher_is_better": false,
+      "extra": {
+        "p50": 0.16,
+        "p95": 0.22,
+        "p99": 0.23
+      },
+      "delta": null
+    }
+  ]
+}

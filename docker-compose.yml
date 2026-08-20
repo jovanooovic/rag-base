@@ -1,0 +1,21 @@
+services:
+  api:
+    build: .
+    ports: ["8000:8000"]
+    env_file: [.env]
+    volumes:
+      - ./data:/srv/data
+      - ./project.config.json:/srv/project.config.json:ro
+    environment:
+      APP_DATA_DIR: /srv/data
+
+  # Uncomment when you switch store_backend to "pgvector".
+  # postgres:
+  #   image: pgvector/pgvector:pg16
+  #   environment:
+  #     POSTGRES_PASSWORD: dev
+  #     POSTGRES_DB: rag
+  #   ports: ["5432:5432"]
+  #   volumes: [pgdata:/var/lib/postgresql/data]
+# volumes:
+#   pgdata:

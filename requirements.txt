@@ -1,0 +1,11 @@
+# Core runtime. Deliberately short -- every dependency here is one you can
+# justify in a client security review.
+httpx>=0.27
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+
+# Optional, install only when the client's data or scale needs it:
+# pypdf>=4.0                 # PDF text extraction (scanned PDFs need OCR instead)
+# psycopg[binary]>=3.1       # pgvector store backend
+# sentence-transformers>=3.0 # local cross-encoder reranker

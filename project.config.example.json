@@ -1,0 +1,31 @@
+{
+  "project_name": "acme-support-rag",
+  "client_name": "Acme GmbH",
+
+  "llm_provider": "mock",
+  "llm_model": "gpt-4.1-mini",
+  "embedding_provider": "mock",
+  "embedding_model": "text-embedding-3-small",
+  "embedding_dim": 256,
+
+  "temperature": 0.0,
+  "max_output_tokens": 1024,
+  "max_cost_usd_per_run": 0.5,
+  "max_llm_calls_per_run": 25,
+
+  "data_dir": "./data",
+  "trace_enabled": true,
+  "trace_dir": "./traces",
+
+  "store_backend": "sqlite",
+  "top_k": 5,
+  "fetch_k": 20,
+  "vector_weight": 1.0,
+  "keyword_weight": 1.0,
+  "use_reranker": true,
+  "rewrite_queries": true,
+  "max_context_chars": 8000,
+  "require_citations": true,
+  "min_top_score": null,
+  "redact_pii": false
+}
