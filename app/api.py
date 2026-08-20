@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .core.config import Settings
@@ -92,3 +94,10 @@ def documents() -> dict[str, Any]:
     return {"documents": len(by_doc), "chunks": len(chunks),
             "by_source": sorted(({"source": k, "chunks": v} for k, v in by_doc.items()),
                                 key=lambda d: -d["chunks"])}
+
+
+# Mounted last so it never shadows an API route above. Optional: a bare
+# clone without web/ (e.g. an API-only deployment) still serves fine.
+_WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+if _WEB_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=_WEB_DIR, html=True), name="web")

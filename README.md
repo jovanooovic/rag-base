@@ -122,6 +122,11 @@ make ask Q="how long is the warranty on batteries?"
 make eval                         # scores against eval/data/golden.jsonl
 ```
 
+`make serve` starts the API on `:8000` and also serves `web/` — a small chat
+console (no framework, no build step) at `http://localhost:8000` for demoing
+the pipeline to someone who isn't going to read `curl` output. Same citations,
+refusals and cost/latency numbers the API returns, just legible.
+
 No API key needed for the first three — `llm_provider: "mock"` runs the entire pipeline
 offline with a deterministic fake model, so every code path (including the eval judge)
 runs in CI with no spend. Point it at a real model when you're ready:
@@ -248,8 +253,9 @@ app/store/        SQLiteStore (default), PgVectorStore (scale), shared interface
 app/retrieve/     BM25, RRF hybrid, LLM + cross-encoder reranker, multi-turn query rewriting
 app/answer/       cited generation, refusal guardrails, PII redaction
 app/evaluation/   the RAG-specific adapter into core/eval, and the golden-set bootstrapper
-app/api.py        FastAPI: /ask /ingest /documents /health
+app/api.py        FastAPI: /ask /ingest /documents /health, serves web/ at "/"
 app/cli.py        ingest, ask, chat, stats, bootstrap-eval
+web/              chat console (vanilla HTML/CSS/JS, no build step)
 eval/             golden set, calibration template, ablations, HTML/PNG report tooling
 intake/           the client questionnaire
 ```
