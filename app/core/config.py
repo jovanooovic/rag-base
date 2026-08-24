@@ -95,9 +95,9 @@ class Settings:
         return settings
 
     def validate(self) -> None:
-        if self.llm_provider not in {"mock", "openai", "anthropic", "ollama"}:
+        if self.llm_provider not in {"mock", "openai", "anthropic", "ollama", "openrouter"}:
             raise ConfigError(f"unknown llm_provider: {self.llm_provider!r}")
-        if self.embedding_provider not in {"mock", "openai", "ollama"}:
+        if self.embedding_provider not in {"mock", "openai", "ollama", "openrouter"}:
             raise ConfigError(f"unknown embedding_provider: {self.embedding_provider!r}")
         if self.embedding_dim <= 0:
             raise ConfigError("embedding_dim must be positive")
@@ -106,7 +106,8 @@ class Settings:
 
     def api_key(self, provider: str, env: dict[str, str] | None = None) -> str:
         env = dict(os.environ if env is None else env)
-        key = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}.get(provider)
+        key = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
+              "openrouter": "OPENROUTER_API_KEY"}.get(provider)
         if key is None:
             return ""
         value = env.get(key, "")

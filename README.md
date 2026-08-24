@@ -159,6 +159,16 @@ export OPENAI_API_KEY=sk-...
 # project.config.json: "llm_provider": "openai", "embedding_provider": "openai", "embedding_dim": 1536
 ```
 
+or OpenRouter, one key for both the LLM and embeddings (same rate as the
+underlying provider, no markup):
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+# project.config.json: "llm_provider": "openrouter", "llm_model": "openai/gpt-4o-mini",
+#                      "embedding_provider": "openrouter", "embedding_model": "qwen/qwen3-embedding-8b",
+#                      "embedding_dim": 4096
+```
+
 or Ollama, fully local:
 
 ```bash
@@ -229,10 +239,14 @@ evidence is signalling something no benchmark table can.
   supports that specific claim. A full judge-verified per-claim check is the textbook
   version of this metric and costs a judge call per citation; this repo's version is the
   cheap, deterministic approximation. Documented in `core/eval/metrics/generation.py`.
-- **`clarification_rate` reads 0.0 by design, not by bug.** The pipeline has no
-  clarification-seeking behaviour today — it only ever answers or refuses. The ambiguous
-  slice exists so this gap is measured and visible rather than silently absent from the
-  eval.
+- **`clarification_rate` on `mock` reads 0.0, and will keep reading 0.0.** The pipeline
+  can now ask instead of guessing (a `NEEDS_CLARIFICATION` path alongside the existing
+  `NOT_IN_SOURCES` refusal path — see `app/answer/generate.py`), but `MockLLM` doesn't
+  attempt to trigger it. A lexical proxy was tried and measured against the golden set:
+  it fired on 9 factoid, 2 multi-hop, 1 aggregation, and 1 unanswerable case to catch
+  1 of 13 real ambiguous ones — telling "combine these two sources" apart from "only one
+  of these two applies" needs judgement a term-overlap heuristic doesn't have. Rather
+  than ship that, mock stays honest at 0.0; the real number above is what matters.
 - **Operational numbers (latency, cost) are hardware- and provider-dependent.** They are
   reported, not gated, in CI (see `core/eval/types.py`'s `regression_gated` flag) —
   gating an unbounded-scale metric with the same "N percentage points" threshold used
@@ -309,7 +323,7 @@ grouped by cause" is a different conversation from "I've set up LangChain."
 
 ```
 core/eval/        shared, system-agnostic eval framework: metrics, judge, baseline, CLI
-app/core/         config, providers (openai/anthropic/ollama/mock), retry, tracing, cost budget
+app/core/         config, providers (openai/anthropic/openrouter/ollama/mock), retry, tracing, cost budget
 app/ingest/       loaders (md/html/csv/json/pdf), 5 chunking strategies, idempotent pipeline
 app/store/        SQLiteStore (default), PgVectorStore (scale), shared interface
 app/retrieve/     BM25, RRF hybrid, LLM + cross-encoder reranker, multi-turn query rewriting

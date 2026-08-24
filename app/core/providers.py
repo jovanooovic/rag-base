@@ -98,6 +98,13 @@ PRICING: dict[str, tuple[float, float]] = {
     "claude-opus-4-1":       (15.00, 75.00),
     "text-embedding-3-small": (0.02, 0.0),
     "text-embedding-3-large": (0.13, 0.0),
+    # OpenRouter model ids carry a vendor prefix and are billed at the
+    # underlying provider's own rate (OpenRouter adds no markup) -- priced
+    # here as their own entries rather than trying to strip the prefix and
+    # reuse the row above, since that's one more place a typo silently zeros
+    # out cost tracking.
+    "openai/gpt-4o-mini":     (0.15, 0.60),
+    "qwen/qwen3-embedding-8b": (0.01, 0.0),
 }
 
 
@@ -204,6 +211,21 @@ class MockLLM:
         if scored[0][0] < 0.34:
             return ("NOT_IN_SOURCES The supplied passages do not cover this question; "
                     "a document about this topic would be needed.")
+
+        # Deliberately does NOT attempt to detect "needs clarification" here.
+        # Tried a lexical proxy (two passages both clearing the bar, without
+        # dominating each other, that don't share much vocabulary) and measured
+        # it against the golden set: 9 factoid, 2 multi-hop, 1 aggregation, and
+        # 1 unanswerable case fired the marker incorrectly, against 1 correct hit
+        # out of 13 real ambiguous cases -- a lexical proxy cannot tell "two
+        # sources that should be combined" from "two sources where only one
+        # applies" without the semantic judgement a real model has. Rather than
+        # ship a heuristic that corrupts citation_recall/faithfulness/
+        # answer_correctness on 13 cases to catch 1, clarification_rate reads 0
+        # on mock -- same treatment as faithfulness reading near-ceiling on mock:
+        # a plumbing check, not a quality estimate. The mechanism itself (prompt,
+        # guardrails, API, UI) is tested directly with scripted responses instead
+        # of routed through this heuristic -- see tests/test_answer_and_guardrails.py.
 
         parts = []
         for overlap, num, body in scored[:2]:
@@ -543,6 +565,10 @@ def build_llm(settings: Settings, trace: Trace | None = None) -> BudgetedLLM:
     elif settings.llm_provider == "ollama":
         inner = OpenAILLM(settings.llm_model, "ollama", timeout=settings.request_timeout_s,
                           base_url=settings.ollama_base_url)
+    elif settings.llm_provider == "openrouter":
+        inner = OpenAILLM(settings.llm_model, settings.api_key("openrouter"),
+                          timeout=settings.request_timeout_s,
+                          base_url="https://openrouter.ai/api/v1")
     else:  # pragma: no cover - validate() already rejects this
         raise ProviderError(f"unknown llm_provider {settings.llm_provider!r}")
     return BudgetedLLM(inner, settings, trace)
@@ -554,5 +580,9 @@ def build_embeddings(settings: Settings) -> EmbeddingClient:
     if settings.embedding_provider == "ollama":
         return OpenAIEmbeddings(settings.embedding_model, "ollama", dim=settings.embedding_dim,
                                 timeout=settings.request_timeout_s, base_url=settings.ollama_base_url)
+    if settings.embedding_provider == "openrouter":
+        return OpenAIEmbeddings(settings.embedding_model, settings.api_key("openrouter"),
+                                dim=settings.embedding_dim, timeout=settings.request_timeout_s,
+                                base_url="https://openrouter.ai/api/v1")
     return OpenAIEmbeddings(settings.embedding_model, settings.api_key("openai"),
                             dim=settings.embedding_dim, timeout=settings.request_timeout_s)
