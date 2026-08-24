@@ -53,3 +53,72 @@ def test_ask_rejects_an_empty_question(client):
 def test_ingest_missing_path_is_a_clean_error(client):
     c, _ = client
     assert c.post("/ingest", json={"path": "/nope/does/not/exist"}).status_code in (404, 500)
+
+
+def test_upload_ingests_a_supported_file(client):
+    c, _ = client
+    files = [("files", ("policy.md", b"# Policy\n\nReturns are accepted within 30 days.",
+                        "text/markdown"))]
+    resp = c.post("/upload", files=files)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["chunks_embedded"] > 0
+    assert body["saved_files"] == [f for f in body["saved_files"] if f.endswith("policy.md")]
+
+
+def test_upload_rejects_an_unsupported_file_type(client):
+    c, _ = client
+    files = [("files", ("virus.exe", b"not really a document", "application/octet-stream"))]
+    assert c.post("/upload", files=files).status_code == 415
+
+
+def test_upload_rejects_more_than_the_file_limit(client):
+    c, _ = client
+    files = [("files", (f"doc{i}.md", b"# x\n\nbody text here.", "text/markdown"))
+             for i in range(11)]
+    assert c.post("/upload", files=files).status_code == 400
+
+
+def test_upload_sanitises_path_traversal_in_filenames(client):
+    c, _ = client
+    files = [("files", ("../../evil.md", b"# x\n\nbody text here.", "text/markdown"))]
+    resp = c.post("/upload", files=files)
+    assert resp.status_code == 200
+    for name in resp.json()["saved_files"]:
+        assert ".." not in name and "/" not in name and "\\" not in name
+
+
+def test_write_endpoints_are_open_when_no_admin_token_is_configured(client, monkeypatch):
+    monkeypatch.delenv("APP_ADMIN_TOKEN", raising=False)
+    c, repo = client
+    resp = c.post("/ingest", json={"path": str(repo / "data" / "sample")})
+    assert resp.status_code == 200
+
+
+def test_write_endpoints_reject_a_missing_admin_token_when_configured(client, monkeypatch):
+    monkeypatch.setenv("APP_ADMIN_TOKEN", "secret123")
+    c, repo = client
+    resp = c.post("/ingest", json={"path": str(repo / "data" / "sample")})
+    assert resp.status_code == 401
+
+
+def test_write_endpoints_reject_a_wrong_admin_token(client, monkeypatch):
+    monkeypatch.setenv("APP_ADMIN_TOKEN", "secret123")
+    c, repo = client
+    resp = c.post("/ingest", json={"path": str(repo / "data" / "sample")},
+                  headers={"X-Admin-Token": "wrong"})
+    assert resp.status_code == 401
+
+
+def test_write_endpoints_accept_the_correct_admin_token(client, monkeypatch):
+    monkeypatch.setenv("APP_ADMIN_TOKEN", "secret123")
+    c, repo = client
+    resp = c.post("/ingest", json={"path": str(repo / "data" / "sample")},
+                  headers={"X-Admin-Token": "secret123"})
+    assert resp.status_code == 200
+
+
+def test_read_endpoints_are_unaffected_by_the_admin_token(client, monkeypatch):
+    monkeypatch.setenv("APP_ADMIN_TOKEN", "secret123")
+    c, _ = client
+    assert c.get("/health").status_code == 200
