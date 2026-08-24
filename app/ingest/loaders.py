@@ -68,21 +68,32 @@ def load_csv(raw: str) -> str:
 
 
 def load_pdf(path: Path) -> str:
-    """PDF text via pypdf if present.
+    """PDF text via pymupdf4llm, with automatic OCR for scanned pages.
 
-    Left as an optional dependency on purpose: half of client PDFs are scans and
-    need OCR anyway, which is a scoping conversation, not a default install.
+    pymupdf4llm decides per page whether it has a usable text layer; pages that
+    don't (scans, or a text layer with missing glyphs) fall back to OCR via
+    RapidOCR -- a pure-Python engine (see requirements.txt) whose models ship
+    inside the wheel, so this needs no system binary and no network call at
+    ingest time, unlike a Tesseract-based setup. Clean, born-digital pages skip
+    OCR entirely, so this stays fast on the common case. Output is Markdown
+    with headings preserved, which is what structure-first chunking (the
+    shipped default) is built to split on -- a scanned PDF chunks exactly as
+    well as a hand-written .md file once OCR'd.
+
+    If no OCR engine is importable at all (e.g. it was stripped from a minimal
+    install), a scanned page silently yields no text -- fail loudly instead:
+    a document that ingests as zero content is worse than one that doesn't
+    ingest.
     """
-    try:
-        from pypdf import PdfReader  # type: ignore
-    except ImportError as exc:  # pragma: no cover
+    import pymupdf4llm
+    text = pymupdf4llm.to_markdown(str(path))
+    if not text.strip():
         raise RuntimeError(
-            "PDF support needs pypdf: pip install pypdf. "
-            "If the client's PDFs are scans you need OCR too -- scope that separately."
-        ) from exc
-    reader = PdfReader(str(path))
-    return "\n\n".join(f"[page {i + 1}]\n{(p.extract_text() or '').strip()}"
-                       for i, p in enumerate(reader.pages))
+            f"{path.name}: extracted no text at all. If this is a scanned PDF, "
+            "check that `rapidocr` is installed (see requirements.txt) -- "
+            "without an OCR engine, scanned pages silently produce nothing."
+        )
+    return text
 
 
 LOADERS = {

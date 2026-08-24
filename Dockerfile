@@ -4,6 +4,12 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /srv
 
+# libgl1 + libglib2.0-0: opencv-python (a rapidocr dependency, for PDF OCR)
+# fails to import without them on a slim base -- ImportError: libGL.so.1.
+# Not a GUI dependency on our end; it's just what the wheel was built against.
+RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Dependencies first so a code change does not invalidate the pip layer.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

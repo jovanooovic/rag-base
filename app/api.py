@@ -141,7 +141,7 @@ async def upload(files: list[UploadFile] = File(...),
 
     try:
         report = pipeline.ingest(upload_dir)
-    except RuntimeError as exc:  # e.g. a .pdf with pypdf not installed
+    except RuntimeError as exc:  # e.g. a scanned .pdf that OCR'd to no text
         raise HTTPException(422, str(exc)) from exc
     get_store.cache_clear()
     return {**report.as_dict(), "saved_files": saved}

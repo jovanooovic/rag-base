@@ -260,8 +260,14 @@ evidence is signalling something no benchmark table can.
   this corpus, this model, this query mix; measure it again before trusting it
   elsewhere. `CrossEncoderReranker` is the slot for a local cross-encoder at volume once
   you have.
-- **PDF support needs `pypdf`**, and scanned PDFs need OCR — a separate scoping
-  conversation.
+- **PDF support (`pymupdf4llm` + `rapidocr`) handles both born-digital and
+  scanned pages automatically** — OCR only runs on pages that need it, and
+  RapidOCR's models ship in the wheel, so it works offline with no system
+  Tesseract install. Its bundled models are strongest on Latin scripts and
+  Chinese; other scripts (Arabic, Devanagari, etc.) haven't been verified
+  against this pipeline and may need a different OCR backend. A page that
+  yields no text at all — OCR failed or no engine is installed — raises
+  instead of silently ingesting as empty content.
 
 ## Using this for a client engagement
 

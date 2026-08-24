@@ -6,7 +6,14 @@ uvicorn[standard]>=0.29
 pydantic>=2.6
 python-multipart>=0.0.9   # required by FastAPI for multipart/form-data (POST /upload)
 
+# PDF ingestion, including scanned pages. pymupdf4llm extracts text/headings as
+# Markdown; rapidocr is its OCR fallback for pages with no text layer -- pure
+# Python, models ship in the wheel (~32MB), no system Tesseract, no network
+# call at OCR time. Pulls in opencv-python (needs libgl1 -- see Dockerfile)
+# and onnxruntime, which is the tradeoff for "OCR that needs no ML service."
+pymupdf4llm>=1.27
+rapidocr>=3.9
+
 # Optional, install only when the client's data or scale needs it:
-# pypdf>=4.0                 # PDF text extraction (scanned PDFs need OCR instead)
 # psycopg[binary]>=3.1       # pgvector store backend
 # sentence-transformers>=3.0 # local cross-encoder reranker
