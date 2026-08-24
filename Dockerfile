@@ -9,6 +9,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY web ./web
 COPY project.config.example.json ./project.config.json
 
 # Non-root: several client security reviews ask about exactly this.

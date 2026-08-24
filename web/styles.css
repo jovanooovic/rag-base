@@ -1,7 +1,12 @@
 /* rag-base — chat console
    Warm, editorial dev-tool aesthetic. Deliberately not the blue/violet
    gradient-AI-chatbot template: one confident accent, restrained motion,
-   monospace reserved for anything that is actually data. */
+   monospace reserved for anything that is actually data.
+
+   --accent is the only color a client deployment overrides (see /health's
+   brand_accent, applied in app.js). --accent-strong/soft/soft-strong are
+   derived from it via color-mix() so a single hex recolors the whole UI
+   instead of four independently-maintained shades drifting out of sync. */
 
 :root {
   --bg: #17161a;
@@ -13,9 +18,10 @@
   --text-dim: #a6a1ac;
   --text-faint: #6d6a74;
   --accent: #cc7a5c;
-  --accent-strong: #e2926f;
-  --accent-soft: rgba(204, 122, 92, 0.14);
-  --accent-soft-strong: rgba(204, 122, 92, 0.24);
+  --accent-mix-toward: white;
+  --accent-strong: color-mix(in srgb, var(--accent) 82%, var(--accent-mix-toward));
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 24%, transparent);
   --warn: #d9a441;
   --warn-soft: rgba(217, 164, 65, 0.12);
   --ok: #7fae7a;
@@ -38,9 +44,10 @@
   --text-dim: #6f6a62;
   --text-faint: #a19b90;
   --accent: #b8613f;
-  --accent-strong: #9c4f31;
-  --accent-soft: rgba(184, 97, 63, 0.1);
-  --accent-soft-strong: rgba(184, 97, 63, 0.18);
+  --accent-mix-toward: black;
+  --accent-strong: color-mix(in srgb, var(--accent) 78%, var(--accent-mix-toward));
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 18%, transparent);
   --warn: #a9761f;
   --warn-soft: rgba(169, 118, 31, 0.1);
   --shadow-soft: 0 1px 2px rgba(30, 25, 20, 0.06), 0 8px 24px -12px rgba(30, 25, 20, 0.18);
@@ -90,8 +97,6 @@ body {
   font-weight: 500;
   letter-spacing: -0.01em;
 }
-
-.brand-mark--muted { color: var(--text-faint); }
 
 .topbar-right {
   display: flex;

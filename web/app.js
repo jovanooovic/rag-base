@@ -34,10 +34,24 @@ themeToggle.addEventListener("click", () => {
 
 // ---------- health ----------
 
+function applyBrand(body) {
+  if (body.project) {
+    document.title = body.project;
+    document.getElementById("brand-name").textContent = body.project;
+  }
+  if (body.brand_accent) {
+    document.documentElement.style.setProperty("--accent", body.brand_accent);
+  }
+  if (body.show_source_link === false) {
+    document.getElementById("source-link").remove();
+  }
+}
+
 async function checkHealth() {
   try {
     const res = await fetch("/health");
     const body = await res.json();
+    applyBrand(body);
     indexed = body.chunks_indexed || 0;
     if (indexed > 0) {
       statusDot.className = "dot dot--ok";

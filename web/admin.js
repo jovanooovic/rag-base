@@ -31,6 +31,26 @@ themeToggle.addEventListener("click", () => {
   applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light");
 });
 
+// ---------- brand (shared behaviour with the chat console) ----------
+
+async function applyBrand() {
+  try {
+    const res = await fetch("/health");
+    const body = await res.json();
+    if (body.project) {
+      document.title = `${body.project} · admin`;
+      document.getElementById("brand-name").textContent = body.project;
+    }
+    if (body.brand_accent) {
+      document.documentElement.style.setProperty("--accent", body.brand_accent);
+    }
+  } catch {
+    // health check failing here isn't fatal -- the rest of the admin page
+    // still works and reports the same failure where it matters.
+  }
+}
+applyBrand();
+
 // ---------- token ----------
 
 function getToken() {

@@ -81,7 +81,9 @@ def _safe_filename(name: str) -> str:
 def health() -> dict[str, Any]:
     s = get_settings()
     return {"status": "ok", "project": s.project_name, "llm_provider": s.llm_provider,
-            "chunks_indexed": get_store().count()}
+            "chunks_indexed": get_store().count(),
+            "brand_accent": s.extra.get("brand_accent"),
+            "show_source_link": bool(s.extra.get("show_source_link", True))}
 
 
 @app.post("/ask")
