@@ -86,7 +86,9 @@ def main(argv=None) -> int:
 
 def _print(result) -> None:
     print("\n" + result.answer.text + "\n")
-    if result.refused:
+    if result.needs_clarification:
+        print("  [asked for clarification instead of guessing]")
+    elif result.refused:
         print(f"  [refused: {result.refusal_reason}]")
     for c in result.answer.citations:
         loc = f" > {c.heading_path}" if c.heading_path else ""

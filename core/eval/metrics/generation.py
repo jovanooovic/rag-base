@@ -41,6 +41,10 @@ class CitationRecall(Metric):
     def compute(self, cases: Sequence[Case], predictions: Sequence[Prediction]) -> MetricResult:
         per_case = []
         for case, pred in pair_by_id(cases, predictions):
+            if pred.output.get("asked_clarification"):
+                # Correctly asking instead of guessing cites nothing by design --
+                # that isn't a recall failure, it's the case working as intended.
+                continue
             gold = set(case.expected.get("gold_doc_ids", []))
             if not gold:
                 continue
@@ -119,10 +123,11 @@ class Faithfulness(Metric):
         per_case = []
         disagreements = []
         for _case, pred in pair_by_id(cases, predictions):
-            if pred.output.get("refused"):
-                # Grading a refusal message for "groundedness in the sources" isn't a
-                # meaningful check -- there's no claim being made to verify -- and
-                # folding it in would dilute the signal on the cases that matter.
+            if pred.output.get("refused") or pred.output.get("asked_clarification"):
+                # Grading a refusal or a clarifying question for "groundedness in the
+                # sources" isn't a meaningful check -- there's no claim being made to
+                # verify -- and folding it in would dilute the signal on the cases
+                # that matter.
                 continue
             answer = pred.output.get("answer_text", "")
             context = pred.output.get("retrieved_context", "")

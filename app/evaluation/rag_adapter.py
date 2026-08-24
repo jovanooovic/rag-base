@@ -38,9 +38,14 @@ EVAL_RETRIEVAL_K = 20
 def load_golden_cases(path: str | Path) -> list[Case]:
     """Read eval/data/golden.jsonl into core.eval Cases.
 
-    `gold_answer` is dropped from `expected` for unanswerable cases: there is no real
-    answer text to grade a refusal against, so leaving it out lets AnswerCorrectness
-    skip those cases automatically rather than scoring them against a placeholder.
+    `gold_answer` is dropped from `expected` for unanswerable and ambiguous cases:
+    there is no real answer text to grade a refusal or a clarifying question against
+    (the ambiguous slice's `gold_answer` describes what a good clarification *would*
+    cover, not a candidate answer), so leaving it out lets AnswerCorrectness skip those
+    cases automatically instead of scoring prose against an unrelated rubric.
+    `gold_doc_ids` stays for every type, ambiguous included -- retrieval quality is a
+    separate question from whether the system asked instead of guessing, and dropping
+    it here would silently shrink the retrieval metrics' n by the whole ambiguous slice.
     """
     rows = [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
     cases = []
@@ -48,7 +53,7 @@ def load_golden_cases(path: str | Path) -> list[Case]:
         expected: dict[str, Any] = {}
         if r.get("gold_doc_ids"):
             expected["gold_doc_ids"] = r["gold_doc_ids"]
-        if r.get("type") != "unanswerable" and r.get("gold_answer"):
+        if r.get("type") not in ("unanswerable", "ambiguous") and r.get("gold_answer"):
             expected["gold_answer"] = r["gold_answer"]
         cases.append(Case(
             id=r["id"], input={"question": r["question"]}, expected=expected,
@@ -121,10 +126,7 @@ def build_rag_system(settings: Settings | None = None,
             "citations": cited_sources,
             "retrieved_context": context,
             "refused": result.refused,
-            # The pipeline has no clarification-seeking behaviour today -- it only
-            # ever answers or refuses. clarification_rate will legitimately read 0
-            # until that's built; that's a known gap, not a bug in this adapter.
-            "asked_clarification": False,
+            "asked_clarification": result.needs_clarification,
         }
         return Prediction(
             case_id=case.id, output=output, latency_ms=latency_ms,

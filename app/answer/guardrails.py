@@ -47,6 +47,12 @@ def check_answer(
     annoying; one that confidently invents a refund policy gets you fired and
     is what the client's previous contractor did.
     """
+    if answer.needs_clarification:
+        # Not a refusal: the model found relevant sources but the question
+        # doesn't say which case applies. No citations to require and no
+        # score floor to clear -- nothing has been claimed yet.
+        return GuardrailResult(True, "", answer)
+
     if not answer.answered:
         return GuardrailResult(False, "model reported the sources do not contain the answer",
                                Answer(refusal_text, answered=False))

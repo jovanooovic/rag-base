@@ -36,6 +36,7 @@ class RAGResult:
     queries: list[str] = field(default_factory=list)
     refused: bool = False
     refusal_reason: str = ""
+    needs_clarification: bool = False
     trace: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
@@ -45,6 +46,7 @@ class RAGResult:
             "answered": self.answer.answered,
             "refused": self.refused,
             "refusal_reason": self.refusal_reason,
+            "needs_clarification": self.needs_clarification,
             "unsupported": self.answer.unsupported,
             "queries": self.queries,
             "citations": [
@@ -123,6 +125,7 @@ class RAGPipeline:
 
             result = RAGResult(question=question, answer=final, hits=hits, queries=queries,
                                refused=not gate.ok, refusal_reason=gate.reason,
+                               needs_clarification=final.needs_clarification,
                                trace={"run_id": self.trace.run_id, **self.trace.counters})
         self.trace.save()
         return result

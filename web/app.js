@@ -209,6 +209,15 @@ function addRefusalMessage(result) {
   scrollToEnd();
 }
 
+function addClarificationMessage(result) {
+  const node = document.getElementById("tpl-clarify").content.cloneNode(true);
+  node.querySelector(".answer-text").textContent = result.answer;
+  const metaEl = node.querySelector(".meta");
+  chat.appendChild(node);
+  metaEl.textContent = formatMeta(result.trace, 0);
+  scrollToEnd();
+}
+
 function shortSource(source) {
   return source.split("/").pop();
 }
@@ -258,7 +267,9 @@ async function ask(question) {
     history.push({ role: "user", content: question });
     history.push({ role: "assistant", content: result.answer });
 
-    if (result.refused) {
+    if (result.needs_clarification) {
+      addClarificationMessage(result);
+    } else if (result.refused) {
       addRefusalMessage(result);
     } else {
       addAssistantMessage(result);

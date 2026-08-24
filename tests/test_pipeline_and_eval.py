@@ -22,6 +22,19 @@ def test_pipeline_result_serialises_for_the_api(pipeline):
     assert {"question", "answer", "citations", "retrieved", "trace"} <= set(payload)
 
 
+def test_a_clarifying_result_serialises_as_not_refused():
+    from app.answer.generate import Answer
+    from app.pipeline import RAGResult
+
+    result = RAGResult(question="q", answer=Answer("Which tier are you on?", answered=False,
+                                                    needs_clarification=True),
+                       needs_clarification=True)
+    payload = result.as_dict()
+    assert payload["needs_clarification"] is True
+    assert payload["refused"] is False
+    assert payload["answer"] == "Which tier are you on?"
+
+
 def test_budget_guard_stops_a_runaway_loop(settings, store):
     from app.core.providers import BudgetedLLM, Message
     from app.core.trace import Trace

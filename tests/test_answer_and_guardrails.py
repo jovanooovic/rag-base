@@ -63,6 +63,24 @@ def test_model_refusal_is_converted_to_a_human_message():
     assert not result.ok and "NOT_IN_SOURCES" not in (result.answer.text)
 
 
+def test_needs_clarification_marker_is_parsed_and_stripped():
+    llm = MockLLM(scripted=[LLMResponse(
+        "NEEDS_CLARIFICATION Which membership tier are you on?", usage=Usage())])
+    ans = answer_question(llm, "How long is my return window?", _hits(2))
+    assert ans.needs_clarification
+    assert not ans.answered
+    assert ans.text == "Which membership tier are you on?"
+    assert "NEEDS_CLARIFICATION" not in ans.text
+
+
+def test_guardrail_passes_a_clarification_through_uncited_and_ignores_score_floor():
+    weak = [ScoredChunk(Chunk("c", "d", "t", "s", 0), 0.01)]
+    answer = Answer("Which membership tier are you on?", used_citations=[], needs_clarification=True)
+    result = check_answer(answer, weak, min_top_score=0.3)
+    assert result.ok
+    assert result.answer.text == "Which membership tier are you on?"
+
+
 @pytest.mark.parametrize("raw,label", [
     ("mail me at ana@example.com", "EMAIL"),
     ("card 4111 1111 1111 1111 please", "CARD"),

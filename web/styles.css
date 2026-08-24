@@ -378,7 +378,10 @@ body {
 
 /* ---------- refusal ---------- */
 
-.bubble--refused {
+/* .msg--assistant .bubble (two classes) otherwise outranks a single
+   .bubble--refused/.bubble--clarify class and silently wins the cascade --
+   qualified the same way here so the state color actually renders. */
+.msg--assistant .bubble--refused {
   background: var(--warn-soft);
   border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
 }
@@ -393,6 +396,22 @@ body {
 }
 
 .bubble--refused .answer-text { color: var(--text-dim); }
+
+/* ---------- clarification ---------- */
+
+.msg--assistant .bubble--clarify {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.clarify-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--accent-strong);
+  margin-bottom: 6px;
+}
 
 /* ---------- meta row ---------- */
 
