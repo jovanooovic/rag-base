@@ -113,6 +113,11 @@ def build_rag_system(settings: Settings | None = None,
         output = {
             "answer_text": result.answer.text,
             "retrieved_doc_ids": _retrieved_doc_ids(wide_hits),
+            # What the pipeline's own top_k actually ranked after reranking -- the
+            # "retrieved_doc_ids" battery above is deliberately pre-rerank (see the
+            # docstring on EVAL_RETRIEVAL_K); this is its post-rerank counterpart, i.e.
+            # what a real user's answer was actually generated from.
+            "reranked_doc_ids": _retrieved_doc_ids(result.hits),
             "citations": cited_sources,
             "retrieved_context": context,
             "refused": result.refused,
@@ -141,6 +146,11 @@ def build_metrics(settings: Settings | None = None, config_path: str | None = No
     judge = Judge(s, model=judge_model or s.llm_model)
     return [
         *retrieval_metrics(ks=(1, 3, 5, 10)),
+        # Post-rerank counterpart, capped at 5: result.hits never exceeds the
+        # pipeline's configured top_k, so a @10 slot here would just repeat @5's cases
+        # padded with nothing. This is the number closer to "what did the user actually
+        # get shown at rank 1", as opposed to the pre-rerank battery above.
+        *retrieval_metrics(ks=(1, 3, 5), field="reranked_doc_ids", suffix="_reranked"),
         CitationPrecision(),
         CitationRecall(),
         RefusalAccuracy(),

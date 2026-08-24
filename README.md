@@ -6,46 +6,57 @@ feels better."
 
 ## Scorecard
 
-> **This is the `mock` provider baseline** — a plumbing check, not a quality estimate.
-> `MockLLM`'s answer synthesis is lexical, not semantic, and its guardrail heuristic
-> is a coverage-ratio approximation, not real judgment. It exists so every code path
-> (including the judge) is exercised for free, offline, deterministically, in CI. The
-> real-model number (this same table, run against a real provider) is the one that
-> belongs in a client conversation — see "How these numbers were produced" below for
-> the one-line command to produce it yourself.
+Real-provider baseline: **`mistral` (Ollama, local) + `qwen3-embedding:8b`**, 135 cases,
+run on consumer hardware (12GB GPU). No cloud key, no spend.
 
-| Metric | Value | 95% CI | n | vs. baseline |
-|---|---|---|---|---|
-| recall@1 | 0.7222 | [0.6528, 0.7870] | 108 | – |
-| recall@3 | 0.9306 | [0.8935, 0.9630] | 108 | – |
-| recall@5 | 0.9630 | [0.9352, 0.9861] | 108 | – |
-| recall@10 | 1.0000 | [1.0000, 1.0000] | 108 | – |
-| mrr | 0.9302 | [0.8931, 0.9630] | 108 | – |
-| ndcg@5 | 0.9161 | [0.8826, 0.9464] | 108 | – |
-| precision@5 | 0.2556 | [0.2370, 0.2741] | 108 | – |
-| citation_precision | 0.7234 | [0.6436, 0.7979] | 94 | – |
-| citation_recall | 0.6528 | [0.5694, 0.7361] | 108 | – |
-| refusal_accuracy | 0.7037 | [0.5185, 0.8519] | 27 | – |
-| clarification_rate | 0.0000 | [0.0000, 0.0000] | 13 | – |
-| answer_correctness | 0.5255 | [0.4468, 0.6042] | 108 | – |
-| faithfulness | 0.9484 | [0.9432, 0.9534] | 94 | – |
-| cost_per_task_usd | 0.0000 | [0.0000, 0.0000] | 135 | – |
-| latency_total_ms | 149.2 | [143.0, 155.3] | 135 | – |
+| Metric | Value | 95% CI | n |
+|---|---|---|---|
+| **Retrieval — pre-rerank** (raw hybrid fusion candidate set) | | | |
+| recall@5 | 0.7685 | [0.6944, 0.8380] | 108 |
+| recall@10 | 0.9907 | [0.9722, 1.0000] | 108 |
+| mrr | 0.6006 | [0.5326, 0.6688] | 108 |
+| hit_rate@1 | 0.4167 | [0.3241, 0.5093] | 108 |
+| **Retrieval — post-rerank** (what the pipeline actually answers from) | | | |
+| recall@5_reranked | 0.9537 | [0.9213, 0.9815] | 108 |
+| mrr_reranked | 0.9614 | [0.9306, 0.9861] | 108 |
+| hit_rate@1_reranked | 0.9352 | [0.8889, 0.9815] | 108 |
+| **Answer quality** | | | |
+| citation_precision | 0.8927 | [0.8429, 0.9368] | 87 |
+| citation_recall | 0.7546 | [0.6759, 0.8287] | 108 |
+| refusal_accuracy | **1.0000** | [1.0000, 1.0000] | 27 |
+| clarification_rate | 0.0000 | [0.0000, 0.0000] | 13 |
+| answer_correctness | 0.7269 | [0.6574, 0.7963] | 108 |
+| faithfulness | 0.8078 | [0.7546, 0.8572] | 87 |
+| **Operational** | | | |
+| cost_per_task_usd | 0.0000 | [0.0000, 0.0000] | 135 |
+| latency_total_ms | 10337.8 | [9855.5, 10834.7] | 135 |
+| latency_retrieve_ms | 8501.6 | [8042.8, 8983.3] | 135 |
 
-Full metric list (all k values, both latency splits) in `eval/baseline.json` and
-`eval/report/latest.md` after running `make eval`.
+Full 40-metric list in `eval/report/latest.md` after `make eval`.
 
 Judge-vs-human kappa: **pending** — the calibration file
 (`eval/calibration/judge_calibration.jsonl`) ships with draft scores only; see
 [CONTRIBUTING.md](CONTRIBUTING.md#judge-calibration) to make it real.
 
-Two numbers worth reading carefully rather than skimming past: **refusal_accuracy is
-0.70** and **clarification_rate is 0.0**, both against the mock provider. Neither is a
-bug — `refusal_accuracy` reflects `MockLLM`'s crude lexical coverage-floor heuristic for
-deciding when to refuse, and `clarification_rate` is 0 because the pipeline has no
-clarification-seeking behaviour at all today (see Known Limitations). Publishing the
-number that makes the system look unfinished, in the section a client reads first, is
-the entire point of this repo.
+**Read the retrieval rows as a before/after, not two unrelated numbers.**
+`recall@k`/`mrr`/`hit_rate@k` score the wide hybrid-search candidate set *before* any
+reranking — deliberately, so the ablation matrix below can isolate chunking and
+retrieval-mode choices from the reranker (see `EVAL_RETRIEVAL_K` in
+`app/evaluation/rag_adapter.py`). The `*_reranked` rows score the same cases after the
+pipeline's actual reranking step — i.e. what a real user's answer was generated from.
+The gap between them (hit_rate@1 goes from **0.42 to 0.94**) is the reranker's entire
+job, measured rather than assumed: raw hybrid fusion alone gets the right document into
+the top slot less than half the time on this corpus; reranking fixes that for 9 cases
+in 10. That is the answer to "is the reranker worth the extra model call" for this
+corpus — measure it again on yours before trusting it there.
+
+**`refusal_accuracy = 1.0000`** is the number worth sitting with: a real model, tested
+against all 27 out-of-scope questions in the golden set, never once fabricated an
+answer. `clarification_rate = 0.0000` is not a companion success — the pipeline has no
+clarification-seeking behaviour at all today, so every ambiguous-slice case gets a
+guess instead of a question back (see Known Limitations). Publishing the number that
+shows what's unfinished, next to the one that shows what works, is the point of this
+whole exercise.
 
 ## How these numbers were produced
 
@@ -64,9 +75,10 @@ the entire point of this repo.
   The unanswerable and ambiguous slices are the ones worth having. Most public RAG
   evals only test the happy path; a refusal-rate number is unusual, and it's exactly
   what an enterprise client is nervous about.
-- **LLM / embedding model**: `mock` for the table above (see the callout). Any real
-  provider is pinned by its exact model string, never a floating `-latest` alias — see
-  `core/eval/judge.py`.
+- **LLM / embedding model**: `mistral` / `qwen3-embedding:8b`, both local via Ollama,
+  pinned by exact model string — never a floating `-latest` alias (see
+  `core/eval/judge.py`). The judge is the same `mistral` instance; a self-judging model
+  is a real caveat, noted again in Known Limitations.
 - **Judge**: the same model, temperature 0, majority vote of 3 independent calls per
   case; disagreement rate recorded, not discarded. Structured JSON output only — a
   judge reply that doesn't parse is recorded as a hard failure, not silently coerced.
@@ -79,6 +91,11 @@ the entire point of this repo.
   python -m app.cli ingest data/sample
   make eval
   ```
+
+  CI itself runs on `llm_provider: "mock"` (free, deterministic, zero spend) so every
+  code path — including the judge — is exercised on every PR with no API key. The mock
+  numbers are a plumbing check, not a quality estimate; don't confuse the two. See
+  `.github/workflows/eval.yml`.
 
 ## Ablation matrix
 
@@ -145,10 +162,15 @@ export OPENAI_API_KEY=sk-...
 or Ollama, fully local:
 
 ```bash
-ollama pull llama3.1 && ollama pull nomic-embed-text
+ollama pull mistral && ollama pull qwen3-embedding:8b
 # project.config.json: "llm_provider": "ollama", "embedding_provider": "ollama",
-#                      "llm_model": "llama3.1", "embedding_model": "nomic-embed-text"
+#                      "llm_model": "mistral", "embedding_model": "qwen3-embedding:8b"
 ```
+
+Pick a model that fits fully in your GPU's VRAM before reaching for a bigger one — see
+the first item in Known Limitations for what happens when it doesn't. `mistral` (7B,
+~4.4GB) and `llama3.1` (8B, ~4.9GB) were both reliably fast on a 12GB card; a 27B model
+was not.
 
 ## Architecture
 
@@ -183,14 +205,20 @@ Decisions worth defending in a client call:
 Written at length on purpose: a candidate who states the boundaries of their own
 evidence is signalling something no benchmark table can.
 
-- **No real-provider scorecard is published yet.** An attempt to run the full 135-case
-  suite against a local 27B model on a 12GB GPU hit repeated request timeouts — the
-  model doesn't fully fit in VRAM (Ollama reported a 44%/56% CPU/GPU split) and CPU
-  fallback for the remainder was too slow to reliably complete a single reranker call
-  within a 300-second timeout, let alone ~135 pipeline runs plus ~600 judge calls. If
-  you're reproducing this locally: pick a model that fits fully in VRAM (an 8B model
-  was reliably fast on the same hardware) before reaching for a bigger one, or budget
-  real wall-clock time (several hours) and a longer `request_timeout_s` if you don't.
+- **A 27B model was tried first and failed — that's why the scorecard is `mistral`, not
+  something bigger.** The full 135-case suite against a local 27B model on a 12GB GPU
+  hit repeated request timeouts: the model didn't fully fit in VRAM (Ollama reported a
+  44%/56% CPU/GPU split), and CPU fallback for the remainder was too slow to reliably
+  complete even a single reranker call within a 300-second timeout. Swapping to a 7B
+  model that fits fully in VRAM fixed it completely — the run above finished in 15
+  minutes with zero failures. If you're reproducing this locally: check that your model
+  fits in VRAM before reaching for a bigger one, or budget real wall-clock time (hours,
+  not minutes) and a longer `request_timeout_s` if you don't.
+- **The judge is the same model that generated the answers.** `mistral` grades
+  `mistral`'s own output for `answer_correctness` and `faithfulness`. That's a real
+  self-judging bias, not a neutral third-party score — treat these two numbers as
+  optimistic until a different (ideally stronger) model is used as judge, or until the
+  calibration file below gives an independent human check.
 - **Judge calibration is unfilled.** The kappa row reads "pending" because
   `eval/calibration/judge_calibration.jsonl` ships with draft (machine-guessed) scores,
   not real human verdicts. Until someone labels at least 30 of the 40 rows, treat the
@@ -210,12 +238,13 @@ evidence is signalling something no benchmark table can.
   gating an unbounded-scale metric with the same "N percentage points" threshold used
   for recall/precision would fail on ordinary run-to-run timing noise, not a real
   regression.
-- **`faithfulness` runs near ceiling on the `mock` provider specifically.**
-  `MockLLM`'s answer synthesis is a near-verbatim excerpt of the retrieved passages, so
-  lexical-overlap faithfulness is inflated by construction. Meaningful on a real
-  provider; a plumbing check on mock. Same caveat applies to `answer_correctness` and
-  `refusal_accuracy` — CI's absolute-floor check (`eval/check_thresholds.py`) is
-  informational on mock for exactly this reason (see `.github/workflows/eval.yml`).
+- **Don't confuse a CI run with the scorecard above.** CI runs on `llm_provider: "mock"`
+  for speed and zero spend, and `MockLLM`'s answer synthesis is a near-verbatim excerpt
+  of the retrieved passages, so lexical-overlap faithfulness is inflated by
+  construction on mock (it measured 0.95 on mock vs the real 0.81 above). Mock is a
+  plumbing check, not a quality estimate — that's why `eval/check_thresholds.py`'s
+  absolute-floor check is informational on mock, not a hard CI gate (see
+  `.github/workflows/eval.yml`).
 - **The corpus is small and fully synthetic (13 docs, 51 chunks).** Retrieval numbers
   at this scale are easy to make look good; the ablation matrix and the golden set's
   multi-hop/aggregation slices exist to make that harder, but a client's real corpus
@@ -226,16 +255,23 @@ evidence is signalling something no benchmark table can.
   chunking override to check the generation-side effect of a specific change.
 - **SQLite cosine search is a linear scan.** Fine to roughly 100k chunks, then move to
   `PgVectorStore`.
-- **The LLM reranker costs a call per query batch.** `CrossEncoderReranker` is the slot
-  for a local cross-encoder at volume; prove it with the ablation matrix first.
+- **The LLM reranker costs a call per query batch, and on this corpus it's earning it**
+  — hit_rate@1 goes from 0.42 pre-rerank to 0.94 post-rerank (see the scorecard). That's
+  this corpus, this model, this query mix; measure it again before trusting it
+  elsewhere. `CrossEncoderReranker` is the slot for a local cross-encoder at volume once
+  you have.
 - **PDF support needs `pypdf`**, and scanned PDFs need OCR — a separate scoping
   conversation.
 
 ## Using this for a client engagement
 
-1. `git clone` → `git checkout -b client/<name>`
+1. `git clone` this repo into a **new, private repo** for the client (e.g.
+   `<you>/rag-<client>`) — never a branch pushed back to this public one. Their
+   config, corpus, and eval set are theirs; this repo stays a clean, generic base.
 2. Send them `intake/intake.html`. It is a self-contained page; they fill it in and it
-   downloads `project.config.json`. Drop that in the repo root.
+   downloads `project.config.json`. Drop that in the repo root. Set `"brand_accent"`
+   and `"show_source_link": false` in there too — see [Branding](#branding-per-client)
+   below.
 3. `make ingest PATH_=/their/corpus` then draft a real golden set for their domain
    (`python -m app.cli bootstrap-eval` scaffolds one from the indexed corpus — have
    their expert correct it, an unreviewed golden set will flatter you and then fail in
@@ -243,7 +279,21 @@ evidence is signalling something no benchmark table can.
 4. Change one thing at a time. Re-run `make eval LABEL=<what-you-changed>`.
    `make eval-accept` updates the baseline deliberately when a change is a real,
    reviewed improvement — see [CONTRIBUTING.md](CONTRIBUTING.md).
-5. Anything you build that is not client-specific gets backported to `main`.
+5. Anything you build that is not client-specific gets backported to `main` **before**
+   you start the next client — this base only stays reusable if fixes don't have to be
+   re-applied by hand to every client fork.
+
+### Branding per client
+
+The chat console (`web/`) reads its identity from the API at runtime — nothing to
+hand-edit per client:
+
+- `project_name` in `project.config.json` sets the page title and topbar mark.
+- `"brand_accent": "#2f6f4f"` (any hex) recolors the whole UI — every derived shade
+  (hover states, soft backgrounds, focus rings) is computed from that one value via
+  CSS `color-mix()`, so one hex is enough for a full client palette.
+- `"show_source_link": false` hides the "view source on GitHub" icon — you don't want
+  a client-branded deployment linking back to the public portfolio repo.
 
 Step 3 is the differentiator. Walking into the first check-in with "your current
 pipeline answers 61% of your own 40 questions correctly, here are the 16 failures

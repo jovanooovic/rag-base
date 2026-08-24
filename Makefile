@@ -30,7 +30,8 @@ eval-accept:
 # Self-contained HTML report: scorecard, ablation table, per-slice breakdown, worst cases.
 eval-report:
 	python -m core.eval.html_report --scorecard eval/report/latest.json \
-		--ablations eval/report/ablations.json --out eval/report/report.html
+		--ablations eval/report/ablations.json --cases eval/report/cases.json \
+		--out eval/report/report.html
 
 # Chunking x retrieval x reranker matrix. Retrieval-only, no LLM calls -- see
 # eval/ablations.py for why that's the right scope.

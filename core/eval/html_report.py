@@ -44,7 +44,10 @@ def _case_score(entry: dict[str, Any]) -> float | None:
     if not gold:
         return None
 
-    signals = [1.0 if gold & set(output.get("retrieved_doc_ids", [])[:5]) else 0.0]
+    # Prefer the post-rerank ranking when the adapter provides one (what the user
+    # actually got shown) over the pre-rerank candidate set.
+    ranked = output.get("reranked_doc_ids") or output.get("retrieved_doc_ids", [])
+    signals = [1.0 if gold & set(ranked[:5]) else 0.0]
     cited = set(output.get("citations", []))
     if cited:
         signals.append(len(gold & cited) / len(cited))

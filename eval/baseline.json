@@ -2,7 +2,7 @@
   "label": "baseline",
   "n_cases": 135,
   "meta": {
-    "git_sha": "no-git"
+    "git_sha": "ed0a8c8f7309"
   },
   "baseline": null,
   "metrics": [
@@ -211,6 +211,162 @@
       "delta": null
     },
     {
+      "name": "mrr_reranked",
+      "value": 0.685,
+      "ci": [
+        0.6267,
+        0.7434
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "recall@1_reranked",
+      "value": 0.3704,
+      "ci": [
+        0.2917,
+        0.4491
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "precision@1_reranked",
+      "value": 0.4722,
+      "ci": [
+        0.3796,
+        0.5648
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "hit_rate@1_reranked",
+      "value": 0.4722,
+      "ci": [
+        0.3796,
+        0.5648
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "ndcg@1_reranked",
+      "value": 0.4722,
+      "ci": [
+        0.3796,
+        0.5648
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "recall@3_reranked",
+      "value": 0.8426,
+      "ci": [
+        0.7824,
+        0.8981
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "precision@3_reranked",
+      "value": 0.3781,
+      "ci": [
+        0.3457,
+        0.4105
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "hit_rate@3_reranked",
+      "value": 0.9259,
+      "ci": [
+        0.8704,
+        0.9722
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "ndcg@3_reranked",
+      "value": 0.685,
+      "ci": [
+        0.629,
+        0.7397
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "recall@5_reranked",
+      "value": 0.9398,
+      "ci": [
+        0.9028,
+        0.9722
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "precision@5_reranked",
+      "value": 0.366,
+      "ci": [
+        0.3383,
+        0.3952
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "hit_rate@5_reranked",
+      "value": 0.9907,
+      "ci": [
+        0.9722,
+        1.0
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "ndcg@5_reranked",
+      "value": 0.7311,
+      "ci": [
+        0.6852,
+        0.7752
+      ],
+      "n": 108,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
       "name": "citation_precision",
       "value": 0.7234,
       "ci": [
@@ -303,49 +459,49 @@
     },
     {
       "name": "latency_total_ms",
-      "value": 153.4556,
+      "value": 87.2652,
       "ci": [
-        147.5407,
-        159.403
+        84.2,
+        90.4356
       ],
       "n": 135,
       "higher_is_better": false,
       "extra": {
-        "p50": 153.1,
-        "p95": 203.5,
-        "p99": 219.1
+        "p50": 89.0,
+        "p95": 121.1,
+        "p99": 130.9
       },
       "delta": null
     },
     {
       "name": "latency_retrieve_ms",
-      "value": 130.0954,
+      "value": 73.464,
       "ci": [
-        124.757,
-        135.5081
+        70.7909,
+        76.2192
       ],
       "n": 135,
       "higher_is_better": false,
       "extra": {
-        "p50": 129.73,
-        "p95": 192.27,
-        "p99": 201.62
+        "p50": 68.57,
+        "p95": 91.88,
+        "p99": 109.69
       },
       "delta": null
     },
     {
       "name": "latency_answer_ms",
-      "value": 0.1659,
+      "value": 0.0956,
       "ci": [
-        0.1602,
-        0.1715
+        0.0928,
+        0.0984
       ],
       "n": 135,
       "higher_is_better": false,
       "extra": {
-        "p50": 0.16,
-        "p95": 0.22,
-        "p99": 0.23
+        "p50": 0.09,
+        "p95": 0.12,
+        "p99": 0.15
       },
       "delta": null
     }

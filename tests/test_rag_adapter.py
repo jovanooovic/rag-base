@@ -55,9 +55,22 @@ def test_build_metrics_returns_the_full_battery(settings):
     names = {m.name for m in metrics}
     assert "mrr" in names
     assert "recall@10" in names
+    assert "mrr_reranked" in names
+    assert "recall@5_reranked" in names
     assert "citation_precision" in names
     assert "refusal_accuracy" in names
     assert "answer_correctness" in names
     assert "faithfulness" in names
     assert "cost_per_task_usd" in names
     assert "latency_total_ms" in names
+
+
+def test_run_case_captures_both_pre_and_post_rerank_rankings(pipeline):
+    cases = load_golden_cases("eval/data/golden.jsonl")
+    case = next(c for c in cases if c.id == "f-01")
+    run_case = build_rag_system(settings=pipeline.settings)
+
+    pred = run_case(case)
+
+    assert isinstance(pred.output["retrieved_doc_ids"], list)
+    assert isinstance(pred.output["reranked_doc_ids"], list)

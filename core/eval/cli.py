@@ -58,7 +58,13 @@ def run(args: argparse.Namespace) -> int:
     print(to_terminal(scorecard))
 
     dataset_bytes = Path(args.suite).read_bytes()
-    run_hash = content_hash(dataset_bytes, {"adapter": args.adapter}, scorecard.meta["git_sha"])
+    # `label` is part of the hash input deliberately: two runs of the same dataset
+    # against different providers/models (e.g. "mock-baseline" vs "real-mistral") are
+    # not the same result and must not silently overwrite each other's <hash>.json --
+    # only `content_hash`'s other inputs (dataset, adapter, git SHA) are visible to
+    # this generic CLI, and none of them capture "which model actually ran."
+    run_hash = content_hash(dataset_bytes, {"adapter": args.adapter, "label": args.label},
+                            scorecard.meta["git_sha"])
     write_results(args.out, run_hash, to_json(scorecard))
     markdown = to_markdown(scorecard)
     Path(args.out, f"{run_hash}.md").write_text(markdown)

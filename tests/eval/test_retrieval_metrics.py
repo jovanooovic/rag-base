@@ -1,6 +1,7 @@
 import math
 
-from core.eval.metrics.retrieval import HitRateAtK, MRR, NDCGAtK, PrecisionAtK, RecallAtK
+from core.eval.metrics.retrieval import (HitRateAtK, MRR, NDCGAtK, PrecisionAtK, RecallAtK,
+                                         retrieval_metrics)
 from core.eval.types import Case, Prediction
 
 
@@ -8,8 +9,8 @@ def _case(id_, gold):
     return Case(id=id_, input={}, expected={"gold_doc_ids": gold})
 
 
-def _pred(id_, retrieved):
-    return Prediction(case_id=id_, output={"retrieved_doc_ids": retrieved})
+def _pred(id_, retrieved, field="retrieved_doc_ids"):
+    return Prediction(case_id=id_, output={field: retrieved})
 
 
 def test_recall_at_k_hand_computed():
@@ -55,3 +56,23 @@ def test_metrics_skip_cases_without_gold_ids():
     cases = [_case("1", [])]
     preds = [_pred("1", ["a"])]
     assert RecallAtK(5).compute(cases, preds).n == 0
+
+
+def test_field_and_suffix_score_a_different_pipeline_stage_without_name_collision():
+    # A prediction can carry two different rankings (pre- and post-rerank) under two
+    # different output keys; the same metric class should score whichever is named.
+    cases = [_case("1", ["a"])]
+    preds = [Prediction(case_id="1", output={"retrieved_doc_ids": ["z", "a"],
+                                             "reranked_doc_ids": ["a", "z"]})]
+    pre = RecallAtK(1, field="retrieved_doc_ids").compute(cases, preds)
+    post = RecallAtK(1, field="reranked_doc_ids", name="recall@1_reranked").compute(cases, preds)
+    assert pre.value == 0.0    # "a" is not in the top 1 of the pre-rerank list
+    assert post.value == 1.0   # but it is in the top 1 of the reranked list
+    assert post.name == "recall@1_reranked"
+
+
+def test_retrieval_metrics_factory_applies_field_and_suffix_to_every_metric():
+    metrics = retrieval_metrics(ks=(1,), field="reranked_doc_ids", suffix="_reranked")
+    names = {m.name for m in metrics}
+    assert names == {"mrr_reranked", "recall@1_reranked", "precision@1_reranked",
+                     "hit_rate@1_reranked", "ndcg@1_reranked"}
