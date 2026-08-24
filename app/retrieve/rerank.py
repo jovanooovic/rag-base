@@ -92,7 +92,7 @@ class CrossEncoderReranker:  # pragma: no cover - optional dependency
 
     def rerank(self, query: str, candidates: Sequence[ScoredChunk], *, top_k: int = 5) -> list[ScoredChunk]:
         pairs = [(query, sc.chunk.text) for sc in candidates]
-        for sc, score in zip(candidates, self.model.predict(pairs)):
+        for sc, score in zip(candidates, self.model.predict(pairs), strict=True):
             sc.score = float(score)
             sc.signals["rerank"] = float(score)
         return sorted(candidates, key=lambda s: s.score, reverse=True)[:top_k]

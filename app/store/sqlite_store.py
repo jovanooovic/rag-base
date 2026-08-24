@@ -54,7 +54,7 @@ class SQLiteStore:
         rows = [
             (c.chunk_id, c.doc_id, c.text, c.source, c.ordinal, c.heading_path,
              json.dumps(c.metadata), json.dumps(list(v)))
-            for c, v in zip(chunks, vectors)
+            for c, v in zip(chunks, vectors, strict=True)
         ]
         self.conn.executemany(
             "INSERT INTO chunks (chunk_id, doc_id, text, source, ordinal, heading_path, metadata, vector) "
@@ -98,7 +98,7 @@ class SQLiteStore:
         scored: list[ScoredChunk] = []
         for r in self._rows(where):
             v = json.loads(r["vector"])
-            dot = sum(a * b for a, b in zip(q, v))
+            dot = sum(a * b for a, b in zip(q, v, strict=True))
             vn = math.sqrt(sum(x * x for x in v)) or 1.0
             score = dot / (qn * vn)
             scored.append(ScoredChunk(self._to_chunk(r), score, {"vector": score}))
@@ -116,7 +116,7 @@ class SQLiteStore:
         else:
             bm = BM25([c.text for c in chunks])
         scores = bm.score(query)
-        ranked = sorted(zip(chunks, scores), key=lambda t: t[1], reverse=True)[:k]
+        ranked = sorted(zip(chunks, scores, strict=True), key=lambda t: t[1], reverse=True)[:k]
         return [ScoredChunk(c, s, {"bm25": s}) for c, s in ranked if s > 0]
 
     def all_chunks(self) -> list[Chunk]:

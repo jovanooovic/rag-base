@@ -50,7 +50,8 @@ class PgVectorStore:  # pragma: no cover - needs a live Postgres
 
     def upsert(self, chunks: Sequence[Chunk], vectors: Sequence[Sequence[float]]) -> int:
         rows = [(c.chunk_id, c.doc_id, c.text, c.source, c.ordinal, c.heading_path,
-                 json.dumps(c.metadata), str(list(v))) for c, v in zip(chunks, vectors)]
+                 json.dumps(c.metadata), str(list(v)))
+                for c, v in zip(chunks, vectors, strict=True)]
         with self.conn.cursor() as cur:
             cur.executemany(
                 f"INSERT INTO {self.table} "

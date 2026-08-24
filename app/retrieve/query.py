@@ -26,6 +26,6 @@ def rewrite(llm, question: str, history: Sequence[Message] | None = None, *, max
         Message.system(REWRITE_SYSTEM),
         Message.user((f"Conversation so far:\n{convo}\n\n" if convo else "") + f"Question: {question}"),
     ])
-    lines = [l.strip(" -*\t") for l in resp.text.splitlines() if l.strip()]
-    queries = [l for l in lines if len(l) > 2][:max_queries]
+    lines = [line.strip(" -*\t") for line in resp.text.splitlines() if line.strip()]
+    queries = [line for line in lines if len(line) > 2][:max_queries]
     return queries or [question]

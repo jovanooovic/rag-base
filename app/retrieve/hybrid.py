@@ -5,7 +5,6 @@ from typing import Any, Sequence
 from ..store.base import ScoredChunk, VectorStore
 
 
-
 def reciprocal_rank_fusion(
     rankings: Sequence[Sequence[ScoredChunk]],
     *,
