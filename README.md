@@ -6,31 +6,31 @@ feels better."
 
 ## Scorecard
 
-Real-provider baseline: **`mistral` (Ollama, local) + `qwen3-embedding:8b`**, 135 cases,
-run on consumer hardware (12GB GPU). No cloud key, no spend.
+Real-provider baseline: **`openai/gpt-4o-mini` + `qwen/qwen3-embedding-8b`, both via
+OpenRouter**, 135 cases. $0.0004/task average — the full suite costs about a nickel.
 
 | Metric | Value | 95% CI | n |
 |---|---|---|---|
 | **Retrieval — pre-rerank** (raw hybrid fusion candidate set) | | | |
-| recall@5 | 0.7685 | [0.6944, 0.8380] | 108 |
-| recall@10 | 0.9907 | [0.9722, 1.0000] | 108 |
-| mrr | 0.6006 | [0.5326, 0.6688] | 108 |
-| hit_rate@1 | 0.4167 | [0.3241, 0.5093] | 108 |
+| recall@5 | 0.9907 | [0.9769, 1.0000] | 108 |
+| recall@10 | 1.0000 | [1.0000, 1.0000] | 108 |
+| mrr | 0.9764 | [0.9505, 0.9954] | 108 |
+| hit_rate@1 | 0.9630 | [0.9259, 0.9907] | 108 |
 | **Retrieval — post-rerank** (what the pipeline actually answers from) | | | |
-| recall@5_reranked | 0.9537 | [0.9213, 0.9815] | 108 |
-| mrr_reranked | 0.9614 | [0.9306, 0.9861] | 108 |
-| hit_rate@1_reranked | 0.9352 | [0.8889, 0.9815] | 108 |
+| recall@5_reranked | 1.0000 | [1.0000, 1.0000] | 108 |
+| mrr_reranked | 0.9954 | [0.9861, 1.0000] | 108 |
+| hit_rate@1_reranked | 0.9907 | [0.9722, 1.0000] | 108 |
 | **Answer quality** | | | |
-| citation_precision | 0.8927 | [0.8429, 0.9368] | 87 |
-| citation_recall | 0.7546 | [0.6759, 0.8287] | 108 |
+| citation_precision | 0.9824 | [0.9593, 1.0000] | 91 |
+| citation_recall | 0.8317 | [0.7673, 0.8911] | 101 |
 | refusal_accuracy | **1.0000** | [1.0000, 1.0000] | 27 |
-| clarification_rate | 0.0000 | [0.0000, 0.0000] | 13 |
-| answer_correctness | 0.7269 | [0.6574, 0.7963] | 108 |
-| faithfulness | 0.8078 | [0.7546, 0.8572] | 87 |
+| clarification_rate | **0.4615** | [0.2308, 0.7692] | 13 |
+| answer_correctness | 0.8553 | [0.7895, 0.9132] | 95 |
+| faithfulness | 0.9890 | [0.9670, 1.0000] | 91 |
 | **Operational** | | | |
-| cost_per_task_usd | 0.0000 | [0.0000, 0.0000] | 135 |
-| latency_total_ms | 10337.8 | [9855.5, 10834.7] | 135 |
-| latency_retrieve_ms | 8501.6 | [8042.8, 8983.3] | 135 |
+| cost_per_task_usd | 0.0004 | [0.0004, 0.0004] | 135 |
+| latency_total_ms | 6986.6 | [6660.5, 7322.4] | 135 |
+| latency_retrieve_ms | 5992.8 | [5684.0, 6318.0] | 135 |
 
 Full 40-metric list in `eval/report/latest.md` after `make eval`.
 
@@ -44,19 +44,21 @@ reranking — deliberately, so the ablation matrix below can isolate chunking an
 retrieval-mode choices from the reranker (see `EVAL_RETRIEVAL_K` in
 `app/evaluation/rag_adapter.py`). The `*_reranked` rows score the same cases after the
 pipeline's actual reranking step — i.e. what a real user's answer was generated from.
-The gap between them (hit_rate@1 goes from **0.42 to 0.94**) is the reranker's entire
-job, measured rather than assumed: raw hybrid fusion alone gets the right document into
-the top slot less than half the time on this corpus; reranking fixes that for 9 cases
-in 10. That is the answer to "is the reranker worth the extra model call" for this
-corpus — measure it again on yours before trusting it there.
+The gap here is narrow (hit_rate@1 0.963 → 0.991) because pre-rerank is already close
+to ceiling on this corpus with this embedding model — a different, more useful finding
+than the earlier real-provider run (local mistral + Ollama) showed (0.42 → 0.94 there):
+**the reranker's measured
+value depends on how good your embeddings already are.** Cheap insurance either way, but
+"is the extra model call worth it" doesn't have one universal answer — measure it on
+your own corpus and embedding choice before trusting either result.
 
-**`refusal_accuracy = 1.0000`** is the number worth sitting with: a real model, tested
-against all 27 out-of-scope questions in the golden set, never once fabricated an
-answer. `clarification_rate = 0.0000` is not a companion success — the pipeline has no
-clarification-seeking behaviour at all today, so every ambiguous-slice case gets a
-guess instead of a question back (see Known Limitations). Publishing the number that
-shows what's unfinished, next to the one that shows what works, is the point of this
-whole exercise.
+**`refusal_accuracy = 1.0000`** holds from the previous baseline: tested against all 27
+out-of-scope questions, the model never once fabricated an answer. `clarification_rate`
+**going from 0.0000 to 0.4615** is the number that matters most this update: it used to
+read zero by construction, because the pipeline had no clarification-seeking behaviour
+at all. Now, on a real model, it asked instead of guessing on 6 of the 13 underspecified
+questions in the golden set. The other 7 still get a guess — that's the gap this number
+exists to keep visible, not a result to round up.
 
 ## How these numbers were produced
 
@@ -75,10 +77,10 @@ whole exercise.
   The unanswerable and ambiguous slices are the ones worth having. Most public RAG
   evals only test the happy path; a refusal-rate number is unusual, and it's exactly
   what an enterprise client is nervous about.
-- **LLM / embedding model**: `mistral` / `qwen3-embedding:8b`, both local via Ollama,
-  pinned by exact model string — never a floating `-latest` alias (see
-  `core/eval/judge.py`). The judge is the same `mistral` instance; a self-judging model
-  is a real caveat, noted again in Known Limitations.
+- **LLM / embedding model**: `openai/gpt-4o-mini` / `qwen/qwen3-embedding-8b`, both via
+  OpenRouter, pinned by exact model string — never a floating `-latest` alias (see
+  `core/eval/judge.py`). The judge is the same `gpt-4o-mini` instance; a self-judging
+  model is a real caveat, noted again in Known Limitations.
 - **Judge**: the same model, temperature 0, majority vote of 3 independent calls per
   case; disagreement rate recorded, not discarded. Structured JSON output only — a
   judge reply that doesn't parse is recorded as a hard failure, not silently coerced.
@@ -87,7 +89,7 @@ whole exercise.
 - **Reproduce it**:
 
   ```bash
-  export APP_LLM_PROVIDER=ollama        # or openai / anthropic
+  export OPENROUTER_API_KEY=sk-or-...   # or openai / anthropic / ollama
   python -m app.cli ingest data/sample
   make eval
   ```
@@ -215,17 +217,29 @@ Decisions worth defending in a client call:
 Written at length on purpose: a candidate who states the boundaries of their own
 evidence is signalling something no benchmark table can.
 
-- **A 27B model was tried first and failed — that's why the scorecard is `mistral`, not
-  something bigger.** The full 135-case suite against a local 27B model on a 12GB GPU
-  hit repeated request timeouts: the model didn't fully fit in VRAM (Ollama reported a
-  44%/56% CPU/GPU split), and CPU fallback for the remainder was too slow to reliably
-  complete even a single reranker call within a 300-second timeout. Swapping to a 7B
-  model that fits fully in VRAM fixed it completely — the run above finished in 15
-  minutes with zero failures. If you're reproducing this locally: check that your model
+- **Local Ollama was tried first for this eval too, and abandoned for a different reason
+  than the 27B failure below: it survived single questions fine but couldn't sustain
+  concurrent load.** A full 135-case run at `--concurrency 4` (retrieval, generation,
+  and reranking calls all in flight together) buried a 7B model in retrying
+  `/chat/completions` and `/embeddings` timeouts until the run had to be killed —
+  no crash, no error, just churn with nothing completing. That's a real, separate
+  finding from the earlier VRAM failure: it means "works for one user asking one
+  question" and "survives a batch eval, or several concurrent users" are different
+  claims, and only the first one was true for local Ollama on this hardware. The
+  scorecard above runs on OpenRouter for exactly this reason — a hosted demo shouldn't
+  depend on one local machine staying up and idle enough to answer within its timeout.
+  Ollama is still a supported provider (see Quickstart) for a client who wants fully
+  local; just don't assume single-question latency predicts batch/concurrent behaviour.
+- **A 27B model was tried before that, for a different reason, and failed differently.**
+  The full suite against a local 27B model on a 12GB GPU hit repeated request timeouts:
+  the model didn't fully fit in VRAM (Ollama reported a 44%/56% CPU/GPU split), and CPU
+  fallback for the remainder was too slow to reliably complete even a single reranker
+  call within a 300-second timeout. A 7B model that fit fully in VRAM fixed that one
+  completely. If you're reproducing this locally with Ollama: check that your model
   fits in VRAM before reaching for a bigger one, or budget real wall-clock time (hours,
   not minutes) and a longer `request_timeout_s` if you don't.
-- **The judge is the same model that generated the answers.** `mistral` grades
-  `mistral`'s own output for `answer_correctness` and `faithfulness`. That's a real
+- **The judge is the same model that generated the answers.** `gpt-4o-mini` grades
+  `gpt-4o-mini`'s own output for `answer_correctness` and `faithfulness`. That's a real
   self-judging bias, not a neutral third-party score — treat these two numbers as
   optimistic until a different (ideally stronger) model is used as judge, or until the
   calibration file below gives an independent human check.
@@ -252,10 +266,14 @@ evidence is signalling something no benchmark table can.
   gating an unbounded-scale metric with the same "N percentage points" threshold used
   for recall/precision would fail on ordinary run-to-run timing noise, not a real
   regression.
-- **Don't confuse a CI run with the scorecard above.** CI runs on `llm_provider: "mock"`
-  for speed and zero spend, and `MockLLM`'s answer synthesis is a near-verbatim excerpt
-  of the retrieved passages, so lexical-overlap faithfulness is inflated by
-  construction on mock (it measured 0.95 on mock vs the real 0.81 above). Mock is a
+- **Don't confuse a CI run with the scorecard above, even where the numbers now look
+  similar.** CI runs on `llm_provider: "mock"` for speed and zero spend, and
+  `MockLLM`'s answer synthesis is a near-verbatim excerpt of the retrieved passages —
+  so lexical-overlap faithfulness is high *by construction* on mock (0.9484), not
+  because anything was judged. That it now sits close to the real score above (0.9890)
+  is a coincidence of this run, not evidence mock became meaningful: mock can't score
+  low on faithfulness even when the system is wrong, because copying a passage
+  verbatim trivially passes a "is this grounded in the source" check. Mock is a
   plumbing check, not a quality estimate — that's why `eval/check_thresholds.py`'s
   absolute-floor check is informational on mock, not a hard CI gate (see
   `.github/workflows/eval.yml`).
@@ -269,11 +287,14 @@ evidence is signalling something no benchmark table can.
   chunking override to check the generation-side effect of a specific change.
 - **SQLite cosine search is a linear scan.** Fine to roughly 100k chunks, then move to
   `PgVectorStore`.
-- **The LLM reranker costs a call per query batch, and on this corpus it's earning it**
-  — hit_rate@1 goes from 0.42 pre-rerank to 0.94 post-rerank (see the scorecard). That's
-  this corpus, this model, this query mix; measure it again before trusting it
-  elsewhere. `CrossEncoderReranker` is the slot for a local cross-encoder at volume once
-  you have.
+- **The LLM reranker costs a call per query batch, and its measured value moved with
+  the embedding model.** Against the weaker local embeddings in an earlier baseline it
+  was worth 52 points of hit_rate@1 (0.42 → 0.94); against `qwen3-embedding-8b` at full
+  precision on OpenRouter, pre-rerank is already at 0.963 and reranking only buys 2.8
+  more (see the scorecard). Same code, same corpus, different embedding quality, very
+  different answer to "is this call worth it" — measure it again before trusting either
+  number elsewhere. `CrossEncoderReranker` is the slot for a local cross-encoder at
+  volume once you have it.
 - **PDF support (`pymupdf4llm` + `rapidocr`) handles both born-digital and
   scanned pages automatically** — OCR only runs on pages that need it, and
   RapidOCR's models ship in the wheel, so it works offline with no system
