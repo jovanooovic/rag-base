@@ -671,6 +671,19 @@ body {
   padding: 24px 0;
 }
 
+/* The cited passage, jumped-to and marked on open -- see highlightPreText /
+   highlightRenderedText / highlightTableRow in app.js. */
+.doc-highlight {
+  background: var(--accent-soft-strong);
+  color: var(--text);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px var(--accent-soft-strong);
+}
+
+tr.doc-highlight-row td {
+  background: var(--accent-soft-strong);
+}
+
 @media (max-width: 560px) {
   .app { padding: 0 14px; }
   .empty-state { padding-top: 8vh; }

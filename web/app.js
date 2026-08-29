@@ -209,7 +209,93 @@ function assertOk(res) {
   return res;
 }
 
-async function openDocument(source, heading) {
+// Jump to the cited passage inside the opened document, instead of leaving
+// the reader to scroll a multi-page doc looking for one paragraph. Matching
+// strategy differs by rendering: flat text search for pre/docx, row-content
+// match for xlsx (its cells never literally contain "Field: value" -- that
+// shape only exists in the excerpt load_xlsx synthesized for the chunk).
+
+function highlightPreText(pre, fullText, excerpt) {
+  const probe = (excerpt || "").trim().slice(0, 60);
+  const idx = probe.length >= 8 ? fullText.indexOf(probe) : -1;
+  if (idx === -1) {
+    pre.textContent = fullText;
+    return false;
+  }
+  const before = fullText.slice(0, idx);
+  const match = fullText.slice(idx, idx + probe.length);
+  const after = fullText.slice(idx + probe.length);
+  pre.innerHTML = `${escapeHtml(before)}<mark class="doc-highlight">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+  return true;
+}
+
+function highlightRenderedText(container, excerpt) {
+  const probe = (excerpt || "").trim().replace(/\s+/g, " ").slice(0, 60);
+  if (probe.length < 8) return false;
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let combined = "";
+  let n;
+  while ((n = walker.nextNode())) {
+    textNodes.push(n);
+    combined += n.nodeValue;
+  }
+  const idx = combined.replace(/\s+/g, " ").indexOf(probe);
+  if (idx === -1) return false;
+
+  // idx is an offset into the whitespace-collapsed string; walk the real
+  // (uncollapsed) text to find the matching node/offset pair for start/end.
+  let collapsedPos = 0, rawPos = 0, startNode = null, startOffset = 0;
+  let endNode = null, endOffset = 0;
+  outer: for (const tn of textNodes) {
+    const raw = tn.nodeValue;
+    for (let i = 0; i < raw.length; i++) {
+      const isSpace = /\s/.test(raw[i]);
+      if (!isSpace || (i > 0 && !/\s/.test(raw[i - 1]))) {
+        if (startNode === null && collapsedPos === idx) { startNode = tn; startOffset = i; }
+        if (collapsedPos === idx + probe.length) { endNode = tn; endOffset = i; break outer; }
+        collapsedPos++;
+      }
+      rawPos++;
+    }
+  }
+  if (!startNode) return false;
+  if (!endNode) { endNode = textNodes[textNodes.length - 1]; endOffset = endNode.nodeValue.length; }
+
+  const range = document.createRange();
+  range.setStart(startNode, startOffset);
+  range.setEnd(endNode, endOffset);
+  const mark = document.createElement("mark");
+  mark.className = "doc-highlight";
+  try {
+    range.surroundContents(mark);
+  } catch {
+    const frag = range.extractContents();
+    mark.appendChild(frag);
+    range.insertNode(mark);
+  }
+  mark.scrollIntoView({ behavior: "smooth", block: "center" });
+  return true;
+}
+
+function highlightTableRow(container, excerpt) {
+  const values = (excerpt || "").split("\n")
+    .map((line) => { const i = line.indexOf(": "); return i === -1 ? line.trim() : line.slice(i + 2).trim(); })
+    .filter((v) => v.length > 0);
+  if (values.length === 0) return false;
+  for (const row of container.querySelectorAll("tr")) {
+    const rowText = row.textContent;
+    if (values.every((v) => rowText.includes(v))) {
+      row.classList.add("doc-highlight-row");
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+  }
+  return false;
+}
+
+async function openDocument(source, heading, excerpt) {
   docModalTitle.textContent = heading ? `${shortSource(source)} ‹ ${heading}` : shortSource(source);
   docModalBody.innerHTML = `<p class="doc-status">Loading&hellip;</p>`;
   docModal.hidden = false;
@@ -219,6 +305,9 @@ async function openDocument(source, heading) {
 
   try {
     if (ext === "pdf") {
+      // No in-page anchor for a plain iframe'd PDF -- the browser's own
+      // viewer owns that surface and doesn't expose a "scroll to text" hook
+      // without PDF.js integration, which is more than this earns right now.
       docModalBody.innerHTML = `<iframe class="doc-frame" src="${url}"></iframe>`;
     } else if (ext === "docx") {
       await loadScriptOnce("https://unpkg.com/jszip@3.10.1/dist/jszip.min.js");
@@ -226,6 +315,7 @@ async function openDocument(source, heading) {
       const buf = await fetch(url).then(assertOk).then((r) => r.arrayBuffer());
       docModalBody.innerHTML = "";
       await window.docx.renderAsync(buf, docModalBody);
+      highlightRenderedText(docModalBody, excerpt);
     } else if (ext === "xlsx") {
       await loadScriptOnce("https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js");
       const buf = await fetch(url).then(assertOk).then((r) => r.arrayBuffer());
@@ -240,13 +330,15 @@ async function openDocument(source, heading) {
         wrap.appendChild(section);
       });
       docModalBody.appendChild(wrap);
+      highlightTableRow(wrap, excerpt);
     } else {
       const text = await fetch(url).then(assertOk).then((r) => r.text());
       docModalBody.innerHTML = "";
       const pre = document.createElement("pre");
       pre.className = "doc-text";
-      pre.textContent = text;
       docModalBody.appendChild(pre);
+      highlightPreText(pre, text, excerpt);
+      docModalBody.querySelector(".doc-highlight")?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   } catch (err) {
     docModalBody.innerHTML = `<p class="doc-status doc-status--error">Could not load this document: ${escapeHtml(err.message)}</p>`;
@@ -281,7 +373,7 @@ function excerptChip(labelHtml, source, heading, excerpt, { quote = false } = {}
   const openTrigger = chip.querySelector(".citation-pop-open");
   const activateOpen = (e) => {
     e.stopPropagation();
-    openDocument(source, heading);
+    openDocument(source, heading, excerpt);
   };
   openTrigger.addEventListener("click", activateOpen);
   openTrigger.addEventListener("keydown", (e) => {
