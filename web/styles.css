@@ -331,9 +331,10 @@ body {
 .citation-pop {
   display: none;
   position: absolute;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 8px);
   left: 0;
   width: 280px;
+  max-width: min(280px, 80vw);
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
