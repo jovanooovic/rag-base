@@ -27,6 +27,16 @@ Do this in a separate commit from the change itself, so the diff to `eval/baseli
 is reviewable on its own — a baseline bump hidden inside an unrelated refactor is exactly
 the kind of thing this gate exists to catch.
 
+**Run `eval-accept` with `project.config.json` pointed at `mock`, always.** CI only ever
+runs mock (see `.github/workflows/eval.yml`: `cp project.config.example.json
+project.config.json` before it evals), so `eval/baseline.json` only means something as a
+mock-vs-mock comparison. Running `eval-accept` against a real provider silently replaces
+it with real-model numbers — CI keeps running mock against that real-model baseline
+afterward, mock can never clear it, and *every subsequent PR* fails with a wall of
+false "regressions." This isn't hypothetical: it happened in this repo (see the commit
+that reverts it). A real-provider quality snapshot belongs in the README's scorecard
+section as its own manual update — never in `eval/baseline.json`.
+
 `make eval` runs on the `mock` provider (free, deterministic, matches CI). The absolute
 quality floors in `eval/check_thresholds.py` (`faithfulness >= 0.85`,
 `refusal_accuracy >= 0.90`) are a *real-model* bar — `MockLLM`'s answer synthesis and
