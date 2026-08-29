@@ -36,7 +36,14 @@
     <div class="empty-state" id="empty-state">
       <p class="empty-kicker">RETRIEVAL-AUGMENTED Q&amp;A</p>
       <h1>Ask the indexed corpus.</h1>
-      <p class="empty-sub">Every answer is grounded in a numbered citation, or the system declines to answer. Nothing is invented.</p>
+      <p class="empty-sub" id="empty-sub">
+        Indexed over Acme Corp's customer support documentation — a synthetic
+        e-commerce retailer built to exercise this pipeline, no real client data.
+        Every answer is grounded in a numbered citation, or the system declines
+        to answer. Nothing is invented.
+      </p>
+      <p class="topics-label" id="topics-label" hidden>In the knowledge base</p>
+      <div class="topics" id="topics"></div>
       <div class="suggestions" id="suggestions">
         <button class="chip" type="button">How long is the warranty on batteries?</button>
         <button class="chip" type="button">Do you ship internationally?</button>

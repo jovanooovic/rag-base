@@ -83,6 +83,7 @@ def health() -> dict[str, Any]:
     return {"status": "ok", "project": s.project_name, "llm_provider": s.llm_provider,
             "chunks_indexed": get_store().count(),
             "brand_accent": s.extra.get("brand_accent"),
+            "brand_description": s.extra.get("brand_description"),
             "show_source_link": bool(s.extra.get("show_source_link", True))}
 
 

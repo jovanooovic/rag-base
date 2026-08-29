@@ -333,6 +333,10 @@ hand-edit per client:
 - `"brand_accent": "#2f6f4f"` (any hex) recolors the whole UI — every derived shade
   (hover states, soft backgrounds, focus rings) is computed from that one value via
   CSS `color-mix()`, so one hex is enough for a full client palette.
+- `"brand_description"` replaces the one-sentence blurb under the empty-state heading —
+  a visitor to the demo has no way to guess what's actually indexed otherwise. The topic
+  pills below it aren't configurable because they don't need to be: they're read live
+  from `/documents`, so they can never drift out of sync with the corpus.
 - `"show_source_link": false` hides the "view source on GitHub" icon — you don't want
   a client-branded deployment linking back to the public portfolio repo.
 

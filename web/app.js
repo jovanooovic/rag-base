@@ -42,10 +42,36 @@ function applyBrand(body) {
   if (body.brand_accent) {
     document.documentElement.style.setProperty("--accent", body.brand_accent);
   }
+  if (body.brand_description) {
+    document.getElementById("empty-sub").textContent = body.brand_description;
+  }
   if (body.show_source_link === false) {
     document.getElementById("source-link").remove();
   }
 }
+
+function topicLabel(source) {
+  const base = source.split("/").pop().replace(/\.[^.]+$/, "");
+  return base.split(/[-_]+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+async function loadTopics() {
+  const container = document.getElementById("topics");
+  const label = document.getElementById("topics-label");
+  try {
+    const res = await fetch("/documents");
+    const body = await res.json();
+    const sources = (body.by_source || []).map((d) => d.source);
+    if (sources.length === 0) return;
+    const labels = [...new Set(sources.map(topicLabel))].sort((a, b) => a.localeCompare(b));
+    container.innerHTML = labels.map((l) => `<span class="topic-pill">${escapeHtml(l)}</span>`).join("");
+    label.hidden = false;
+  } catch {
+    // Empty-state still works without this -- suggested questions are enough
+    // to get started even if /documents is unreachable for some reason.
+  }
+}
+loadTopics();
 
 async function checkHealth() {
   try {
