@@ -355,7 +355,7 @@ body {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--accent-strong);
-  margin-bottom: 6px;
+  margin-top: 8px;
   word-break: break-word;
 }
 
@@ -363,6 +363,11 @@ body {
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--text-dim);
+}
+
+.citation-pop-excerpt--quote {
+  font-style: italic;
+  color: var(--text);
 }
 
 /* ---------- retrieval details ---------- */
@@ -387,25 +392,9 @@ body {
 .retrieval-details summary::before { content: "\25B8  "; }
 .retrieval-details[open] summary::before { content: "\25BE  "; }
 
-.retrieval-table {
-  width: 100%;
-  border-collapse: collapse;
+.best-match {
   margin-top: 8px;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
 }
-
-.retrieval-table td {
-  padding: 4px 6px;
-  color: var(--text-dim);
-  border-top: 1px solid var(--border-soft);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
-}
-
-.retrieval-table td:last-child { text-align: right; color: var(--text-faint); }
 
 /* ---------- refusal ---------- */
 

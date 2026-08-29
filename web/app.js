@@ -171,11 +171,38 @@ function formatMeta(trace, sourceCount) {
   return parts.join(" · ");
 }
 
+function excerptChip(labelHtml, source, heading, excerpt, { quote = false } = {}) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "citation-chip";
+  chip.setAttribute("aria-expanded", "false");
+  const text = (excerpt || "").trim();
+  const shown = quote && text ? `&hellip;${escapeHtml(text)}&hellip;` : escapeHtml(text);
+  chip.innerHTML = `${labelHtml}
+    <div class="citation-pop" role="tooltip">
+      <div class="citation-pop-excerpt${quote ? " citation-pop-excerpt--quote" : ""}">${shown}</div>
+      <div class="citation-pop-source">${escapeHtml(source)}${heading ? " &rsaquo; " + escapeHtml(heading) : ""}</div>
+    </div>`;
+  chip.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = chip.classList.contains("is-open");
+    document.querySelectorAll(".citation-chip.is-open").forEach((el) => {
+      el.classList.remove("is-open");
+      el.setAttribute("aria-expanded", "false");
+    });
+    if (!isOpen) {
+      chip.classList.add("is-open");
+      chip.setAttribute("aria-expanded", "true");
+    }
+  });
+  return chip;
+}
+
 function addAssistantMessage(result) {
   const node = document.getElementById("tpl-assistant").content.cloneNode(true);
   const answerEl = node.querySelector(".answer-text");
   const citationsEl = node.querySelector(".citations");
-  const table = node.querySelector(".retrieval-table tbody");
+  const bestMatchEl = node.querySelector(".best-match");
   const metaEl = node.querySelector(".meta");
   const details = node.querySelector(".retrieval-details");
 
@@ -183,39 +210,17 @@ function addAssistantMessage(result) {
   const retrieved = result.retrieved || [];
 
   citations.forEach((c) => {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "citation-chip";
-    chip.setAttribute("aria-expanded", "false");
-    chip.innerHTML = `[${c.n}] ${escapeHtml(shortSource(c.source))}
-      <div class="citation-pop" role="tooltip">
-        <div class="citation-pop-source">${escapeHtml(c.source)}${c.heading ? " &rsaquo; " + escapeHtml(c.heading) : ""}</div>
-        <div class="citation-pop-excerpt">${escapeHtml(c.excerpt || "")}</div>
-      </div>`;
-    chip.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const isOpen = chip.classList.contains("is-open");
-      document.querySelectorAll(".citation-chip.is-open").forEach((el) => {
-        el.classList.remove("is-open");
-        el.setAttribute("aria-expanded", "false");
-      });
-      if (!isOpen) {
-        chip.classList.add("is-open");
-        chip.setAttribute("aria-expanded", "true");
-      }
-    });
-    citationsEl.appendChild(chip);
+    citationsEl.appendChild(excerptChip(
+      `[${c.n}] ${escapeHtml(shortSource(c.source))}`, c.source, c.heading, c.excerpt));
   });
   if (citations.length === 0) citationsEl.remove();
 
   if (retrieved.length === 0) {
     details.remove();
   } else {
-    retrieved.forEach((h) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${escapeHtml(shortSource(h.source))}</td><td>${h.score}</td>`;
-      table.appendChild(tr);
-    });
+    const top = retrieved[0];
+    bestMatchEl.appendChild(excerptChip(
+      escapeHtml(shortSource(top.source)), top.source, top.heading, top.excerpt, { quote: true }));
   }
 
   chat.appendChild(node);

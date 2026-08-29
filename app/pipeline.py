@@ -56,6 +56,7 @@ class RAGResult:
             ],
             "retrieved": [
                 {"chunk_id": h.chunk.chunk_id, "source": h.chunk.source,
+                 "heading": h.chunk.heading_path, "excerpt": h.chunk.text[:300],
                  "score": round(h.score, 4), "signals": {k: round(v, 4) for k, v in h.signals.items()}}
                 for h in self.hits
             ],
