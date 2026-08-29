@@ -345,7 +345,11 @@ body {
   animation: rise 160ms ease-out;
 }
 
-.citation-chip.is-open .citation-pop { display: block; }
+.citation-chip.is-open .citation-pop,
+.citation-chip:hover .citation-pop,
+.citation-chip:focus-visible .citation-pop {
+  display: block;
+}
 
 .citation-pop-source {
   font-family: var(--font-mono);
