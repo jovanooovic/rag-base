@@ -21,6 +21,7 @@ def client(tmp_path, monkeypatch):
     from app import api
     api.get_settings.cache_clear()
     api.get_store.cache_clear()
+    api._ANSWER_CACHE.clear()  # module-level, so tests don't leak hits into each other
     return TestClient(api.app), Path(__file__).resolve().parents[1]
 
 
@@ -43,6 +44,50 @@ def test_ingest_then_ask_returns_citations(client):
     body = c.post("/ask", json={"question": "how long is the return window"}).json()
     assert body["retrieved"], "expected retrieved chunks in the response"
     assert "answer" in body and "trace" in body
+
+
+def test_ask_caches_a_repeated_question(client):
+    c, repo = client
+    c.post("/ingest", json={"path": str(repo / "data" / "sample")})
+    req = {"question": "how long is the return window"}
+
+    first = c.post("/ask", json=req).json()
+    second = c.post("/ask", json=req).json()
+
+    assert first["cached"] is False
+    assert second["cached"] is True
+    assert second["answer"] == first["answer"]
+    assert second["citations"] == first["citations"]
+
+
+def test_ask_cache_is_keyed_on_history_not_just_the_question(client):
+    c, repo = client
+    c.post("/ingest", json={"path": str(repo / "data" / "sample")})
+    question = "how long is the return window"
+
+    no_history = c.post("/ask", json={"question": question}).json()
+    with_history = c.post("/ask", json={
+        "question": question,
+        "history": [{"role": "user", "content": "I bought a jacket last week"}],
+    }).json()
+
+    assert no_history["cached"] is False
+    assert with_history["cached"] is False, "different history must not hit the other request's cache entry"
+
+
+def test_ingest_clears_the_answer_cache(client):
+    c, repo = client
+    sample = str(repo / "data" / "sample")
+    c.post("/ingest", json={"path": sample})
+    req = {"question": "how long is the return window"}
+
+    c.post("/ask", json=req)  # populates the cache
+    assert c.post("/ask", json=req).json()["cached"] is True
+
+    c.post("/ingest", json={"path": sample})  # re-ingest, even of the same corpus
+
+    assert c.post("/ask", json=req).json()["cached"] is False, \
+        "a fresh ingest must invalidate previously cached answers"
 
 
 def test_ask_rejects_an_empty_question(client):

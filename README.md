@@ -213,6 +213,8 @@ Decisions worth defending in a client call:
 | SQLite default | Zero infrastructure on day one. `PgVectorStore` is a one-line swap when scale justifies it. |
 | Citations enforced | An uncited answer is blocked, not returned. Fail closed. |
 | Per-run cost budget | Refuses past `max_cost_usd_per_run`. Cheap insurance against the overnight-loop invoice. |
+| Reranker batched in one call | `LLMReranker`'s batch size matches `fetch_k` instead of splitting into two sequential round trips for no quality gain — measured as roughly half of total `/ask` latency before this, on a live OpenRouter run. |
+| In-process answer cache | Keyed on question + history + filters, cleared on ingest. A repeated question — a demo re-run, two visitors clicking the same suggestion — costs one retrieve+rerank+generate the first time and nothing after: no LLM call, no spend, sub-second response. |
 | No LangChain | Nothing here is hard enough to justify the abstraction, and provider changes stay in one 400-line file. |
 | Shared `core/eval/` | The same metric ABC, judge, baseline, and CI machinery are meant to be reused by an agent runtime too — the reuse is the story, not an implementation detail. |
 

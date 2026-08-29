@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import uuid
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -59,6 +62,28 @@ class IngestRequest(BaseModel):
     path: str
 
 
+# In-process answer cache. A repeated question -- the same suggestion chip
+# clicked by a second visitor, a demo re-run -- costs one retrieve+rerank+
+# generate the first time and nothing at all after that: no LLM calls, no
+# cost, no wait. Keyed on everything that can change the answer (question,
+# history, filters, top_k), not just the question text, so a follow-up with
+# different conversation context never collides with an unrelated cache hit.
+# Cleared on every successful ingest/upload -- new content can turn a cached
+# refusal into a real answer, or vice versa, and a stale hit would hide that.
+_ANSWER_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_ANSWER_CACHE_MAX = 200  # bounded so a long-running demo can't grow this forever
+
+
+def _cache_key(req: AskRequest) -> str:
+    payload = {
+        "question": req.question,
+        "history": [(t.role, t.content) for t in req.history],
+        "top_k": req.top_k,
+        "filters": req.filters,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
 def require_admin(x_admin_token: str = Header(default="", alias="X-Admin-Token")) -> None:
     """Gate write endpoints with a shared-secret header.
 
@@ -92,10 +117,23 @@ def health() -> dict[str, Any]:
 def ask(req: AskRequest, pipeline: RAGPipeline = Depends(get_pipeline)) -> dict[str, Any]:
     if pipeline.store.count() == 0:
         raise HTTPException(409, "index is empty -- run ingestion first (POST /ingest)")
+
+    key = _cache_key(req)
+    cached = _ANSWER_CACHE.get(key)
+    if cached is not None:
+        _ANSWER_CACHE.move_to_end(key)
+        return {**cached, "cached": True}
+
     history = [Message(t.role, t.content) for t in req.history]
     result = pipeline.ask(req.question, history=history or None,
                           where=req.filters, top_k=req.top_k)
-    return result.as_dict()
+    body = result.as_dict()
+
+    _ANSWER_CACHE[key] = body
+    _ANSWER_CACHE.move_to_end(key)
+    if len(_ANSWER_CACHE) > _ANSWER_CACHE_MAX:
+        _ANSWER_CACHE.popitem(last=False)
+    return {**body, "cached": False}
 
 
 @app.post("/ingest", dependencies=[Depends(require_admin)])
@@ -107,6 +145,7 @@ def ingest(req: IngestRequest, pipeline: RAGPipeline = Depends(get_pipeline)) ->
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     get_store.cache_clear()
+    _ANSWER_CACHE.clear()
     return report.as_dict()
 
 
@@ -146,6 +185,7 @@ async def upload(files: list[UploadFile] = File(...),
     except RuntimeError as exc:  # e.g. a scanned .pdf that OCR'd to no text
         raise HTTPException(422, str(exc)) from exc
     get_store.cache_clear()
+    _ANSWER_CACHE.clear()
     return {**report.as_dict(), "saved_files": saved}
 
 
