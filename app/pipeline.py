@@ -77,11 +77,19 @@ class RAGPipeline:
         self.store = store or build_store(self.settings)
 
         ex = self.settings.extra
-        reranker = LLMReranker(self.llm) if ex.get("use_reranker", True) else None
+        fetch_k = int(ex.get("fetch_k", 20))
+        # Sized to cover fetch_k candidates in one call instead of LLMReranker's
+        # own default (12) splitting them into two sequential round trips --
+        # the second one was over half of every query's total latency, for no
+        # quality gain, since it's the same candidates either way. Capped so a
+        # client config with a much larger fetch_k doesn't silently push an
+        # oversized batch into one prompt.
+        reranker = LLMReranker(self.llm, batch_size=min(fetch_k, 40)) \
+            if ex.get("use_reranker", True) else None
         self.retriever = HybridRetriever(
             self.store, self.embeddings,
             top_k=int(ex.get("top_k", 5)),
-            fetch_k=int(ex.get("fetch_k", 20)),
+            fetch_k=fetch_k,
             vector_weight=float(ex.get("vector_weight", 1.0)),
             keyword_weight=float(ex.get("keyword_weight", 1.0)),
             reranker=reranker,
