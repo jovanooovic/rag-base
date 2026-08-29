@@ -32,6 +32,11 @@
   --font-sans: "Geist", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.2), 0 12px 32px -14px rgba(0, 0, 0, 0.5);
+  /* Icon chrome runs cool-neutral, deliberately off the warm bg scale --
+     the same considered temperature contrast the reference design uses for
+     its icon rail against a warm page ground. */
+  --icon-chrome: #26292d;
+  --icon-chrome-hover: #2e3237;
   color-scheme: dark;
 }
 
@@ -51,7 +56,9 @@
   --accent-soft-strong: color-mix(in srgb, var(--accent) 16%, transparent);
   --warn: #a9761f;
   --warn-soft: rgba(169, 118, 31, 0.1);
-  --shadow-soft: 0 1px 2px rgba(30, 22, 12, 0.05), 0 16px 40px -18px rgba(30, 22, 12, 0.22);
+  --shadow-soft: 0 4px 6px -4px rgba(0, 0, 0, 0.1), 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --icon-chrome: #e6ebef;
+  --icon-chrome-hover: #dbe1e6;
   color-scheme: light;
 }
 
@@ -136,15 +143,14 @@ body {
   height: 34px;
   border-radius: 50%;
   border: 1px solid transparent;
-  background: var(--bg-elevated-2);
+  background: var(--icon-chrome);
   color: var(--text-dim);
   cursor: pointer;
   transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, transform 100ms ease;
 }
 
 .icon-btn:hover {
-  background: var(--bg-elevated);
-  border-color: var(--border);
+  background: var(--icon-chrome-hover);
   color: var(--text);
 }
 
@@ -515,6 +521,11 @@ body {
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
+/* Shadow alone reads as "floating card" on a light, warm ground -- a visible
+   border on top of it looks like a double edge. Dark backgrounds keep the
+   hairline since shadow contrast is weak there. */
+:root[data-theme="light"] .composer { border-color: transparent; }
+
 .composer:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -528,7 +539,7 @@ body {
   background: transparent;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 14.5px;
+  font-size: 16px;
   line-height: 1.5;
   max-height: 160px;
   padding: 6px 0;
