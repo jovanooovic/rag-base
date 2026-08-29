@@ -18,21 +18,26 @@ OpenRouter**, 135 cases. $0.0004/task average — the full suite costs about a n
 | hit_rate@1 | 0.9630 | [0.9259, 0.9907] | 108 |
 | **Retrieval — post-rerank** (what the pipeline actually answers from) | | | |
 | recall@5_reranked | 1.0000 | [1.0000, 1.0000] | 108 |
-| mrr_reranked | 0.9954 | [0.9861, 1.0000] | 108 |
-| hit_rate@1_reranked | 0.9907 | [0.9722, 1.0000] | 108 |
+| mrr_reranked | 0.9907 | [0.9769, 1.0000] | 108 |
+| hit_rate@1_reranked | 0.9815 | [0.9537, 1.0000] | 108 |
 | **Answer quality** | | | |
-| citation_precision | 0.9824 | [0.9593, 1.0000] | 91 |
-| citation_recall | 0.8317 | [0.7673, 0.8911] | 101 |
+| citation_precision | 0.9813 | [0.9569, 1.0000] | 89 |
+| citation_recall | 0.8200 | [0.7500, 0.8850] | 100 |
 | refusal_accuracy | **1.0000** | [1.0000, 1.0000] | 27 |
 | clarification_rate | **0.4615** | [0.2308, 0.7692] | 13 |
-| answer_correctness | 0.8553 | [0.7895, 0.9132] | 95 |
-| faithfulness | 0.9890 | [0.9670, 1.0000] | 91 |
+| answer_correctness | 0.8605 | [0.7947, 0.9184] | 95 |
+| faithfulness | 0.9888 | [0.9663, 1.0000] | 89 |
 | **Operational** | | | |
 | cost_per_task_usd | 0.0004 | [0.0004, 0.0004] | 135 |
-| latency_total_ms | 6986.6 | [6660.5, 7322.4] | 135 |
-| latency_retrieve_ms | 5992.8 | [5684.0, 6318.0] | 135 |
+| latency_total_ms | 5112.6 | [4824.0, 5415.2] | 135 |
+| latency_retrieve_ms | 4060.9 | [3783.4, 4356.2] | 135 |
 
-Full 40-metric list in `eval/report/latest.md` after `make eval`.
+Full 40-metric list in `eval/report/latest.md` after `make eval`. `latency_total_ms` and
+`latency_retrieve_ms` dropped ~27%/~32% from the previous run purely from batching the
+reranker into one call instead of two — same candidates, same quality (every other row
+above is within noise), just one fewer network round trip. An in-process cache (see the
+decisions table below) drops repeated questions to sub-second; this number is the cold,
+uncached path, which is the honest one to publish as the baseline.
 
 Judge-vs-human kappa: **pending** — the calibration file
 (`eval/calibration/judge_calibration.jsonl`) ships with draft scores only; see
