@@ -246,6 +246,20 @@ body {
 
 .chip:active { transform: translateY(0) scale(0.98); }
 
+.chip--demo { border-style: dashed; }
+
+.chip-tag {
+  display: inline-block;
+  margin-left: 5px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warn);
+  vertical-align: 1px;
+}
+
 /* ---------- messages ---------- */
 
 .msg {

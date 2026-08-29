@@ -117,7 +117,10 @@ sendBtn.addEventListener("click", submit);
 document.getElementById("suggestions").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
   if (!chip) return;
-  input.value = chip.textContent;
+  // data-question, not textContent -- a chip can carry a decorative child
+  // (see .chip-tag on the refusal demo) that textContent would fold into
+  // the submitted question otherwise.
+  input.value = chip.dataset.question || chip.textContent.trim();
   submit();
 });
 
