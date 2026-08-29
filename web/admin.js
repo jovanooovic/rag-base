@@ -77,7 +77,7 @@ tokenSave.addEventListener("click", () => {
 
 // ---------- file selection ----------
 
-const ACCEPTED = [".txt", ".md", ".markdown", ".html", ".htm", ".csv", ".json", ".pdf"];
+const ACCEPTED = [".txt", ".md", ".markdown", ".html", ".htm", ".csv", ".json", ".pdf", ".docx", ".xlsx"];
 const MAX_BYTES = 15 * 1024 * 1024;
 const MAX_FILES = 10;
 

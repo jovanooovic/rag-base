@@ -96,6 +96,60 @@ def load_pdf(path: Path) -> str:
     return text
 
 
+def load_docx(path: Path) -> str:
+    """Word text via python-docx, headings mapped to Markdown.
+
+    Same reasoning as the PDF loader: structure-first chunking splits on
+    Markdown headings, so a "Heading 2" paragraph style becomes "## text"
+    rather than a plain line indistinguishable from body text. Tables render
+    as tab-separated rows -- good enough to keep a row's cells together in
+    one chunk without pulling in a Markdown-table renderer for what's usually
+    a handful of small tables per document.
+    """
+    from docx import Document as _Docx
+
+    doc = _Docx(str(path))
+    parts: list[str] = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        style = (para.style.name or "").lower() if para.style else ""
+        if style == "title":
+            parts.append(f"# {text}")
+        elif style.startswith("heading"):
+            level = next((c for c in style if c.isdigit()), "1")
+            parts.append(f"{'#' * min(int(level), 6)} {text}")
+        else:
+            parts.append(text)
+    for table in doc.tables:
+        rows = ["\t".join(cell.text.strip() for cell in row.cells) for row in table.rows]
+        rows = [r for r in rows if r.strip("\t")]
+        if rows:
+            parts.append("\n".join(rows))
+    return "\n\n".join(parts)
+
+
+def load_xlsx(path: Path) -> str:
+    """Excel text, one record block per row per sheet -- the same shape as
+    load_csv, extended with a sheet name since a workbook can have several."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(str(path), read_only=True, data_only=True)
+    blocks: list[str] = []
+    for sheet in wb.worksheets:
+        rows = list(sheet.iter_rows(values_only=True))
+        if not rows:
+            continue
+        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+        for i, row in enumerate(rows[1:], start=1):
+            body = "\n".join(f"{h}: {v}" for h, v in zip(headers, row, strict=True)
+                             if h and v not in (None, ""))
+            if body:
+                blocks.append(f"### {sheet.title} — record {i}\n{body}")
+    return "\n\n".join(blocks)
+
+
 LOADERS = {
     ".txt": lambda p: p.read_text(errors="replace"),
     ".md": lambda p: p.read_text(errors="replace"),
@@ -105,6 +159,8 @@ LOADERS = {
     ".csv": lambda p: load_csv(p.read_text(errors="replace")),
     ".json": lambda p: json.dumps(json.loads(p.read_text()), indent=2),
     ".pdf": load_pdf,
+    ".docx": load_docx,
+    ".xlsx": load_xlsx,
 }
 
 SUPPORTED = tuple(LOADERS)

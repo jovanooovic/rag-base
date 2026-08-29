@@ -1,7 +1,9 @@
 import pymupdf
 import pytest
+from docx import Document
+from openpyxl import Workbook
 
-from app.ingest.loaders import load_pdf
+from app.ingest.loaders import load_docx, load_pdf, load_xlsx
 
 
 def _text_pdf(path, heading: str, body: str) -> None:
@@ -60,3 +62,74 @@ def test_load_pdf_fails_loudly_on_a_genuinely_blank_page(tmp_path):
 
     with pytest.raises(RuntimeError, match="extracted no text"):
         load_pdf(pdf_path)
+
+
+def test_load_docx_maps_heading_styles_to_markdown(tmp_path):
+    docx_path = tmp_path / "warranty.docx"
+    doc = Document()
+    doc.add_heading("Warranty Policy", level=1)
+    doc.add_paragraph("Intro paragraph about warranty terms.")
+    doc.add_heading("Batteries", level=2)
+    doc.add_paragraph("Batteries are covered for 12 months.")
+    doc.save(str(docx_path))
+
+    text = load_docx(docx_path)
+
+    assert "# Warranty Policy" in text
+    assert "## Batteries" in text
+    assert "12 months" in text
+
+
+def test_load_docx_keeps_table_rows_together(tmp_path):
+    docx_path = tmp_path / "coverage.docx"
+    doc = Document()
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Item"
+    table.cell(0, 1).text = "Coverage"
+    table.cell(1, 0).text = "Battery"
+    table.cell(1, 1).text = "12 months"
+    doc.save(str(docx_path))
+
+    text = load_docx(docx_path)
+
+    assert "Battery" in text and "12 months" in text
+    # same row, not split across two chunks worth of text
+    battery_line = next(line for line in text.splitlines() if "Battery" in line)
+    assert "12 months" in battery_line
+
+
+def test_load_xlsx_emits_one_record_block_per_row(tmp_path):
+    xlsx_path = tmp_path / "warranty.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Warranty"
+    ws.append(["Item", "Coverage"])
+    ws.append(["Battery", "12 months"])
+    ws.append(["Screen", "24 months"])
+    wb.save(str(xlsx_path))
+
+    text = load_xlsx(xlsx_path)
+
+    assert "Warranty" in text
+    assert "Item: Battery" in text
+    assert "Coverage: 12 months" in text
+    assert "Item: Screen" in text
+    assert text.count("record") == 2
+
+
+def test_load_xlsx_covers_every_sheet(tmp_path):
+    xlsx_path = tmp_path / "multi.xlsx"
+    wb = Workbook()
+    ws1 = wb.active
+    ws1.title = "Warranty"
+    ws1.append(["Item"])
+    ws1.append(["Battery"])
+    ws2 = wb.create_sheet("Shipping")
+    ws2.append(["Region"])
+    ws2.append(["EU"])
+    wb.save(str(xlsx_path))
+
+    text = load_xlsx(xlsx_path)
+
+    assert "Warranty" in text and "Battery" in text
+    assert "Shipping" in text and "EU" in text

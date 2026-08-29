@@ -14,6 +14,12 @@ python-multipart>=0.0.9   # required by FastAPI for multipart/form-data (POST /u
 pymupdf4llm>=1.27
 rapidocr>=3.9
 
+# Word and Excel ingestion -- the two formats clients upload almost as often
+# as PDF. Plain text extraction only (no OCR/embedded-image handling); a
+# scanned Word doc saved from a fax is a PDF/OCR problem, not this.
+python-docx>=1.1
+openpyxl>=3.1
+
 # Optional, install only when the client's data or scale needs it:
 # psycopg[binary]>=3.1       # pgvector store backend
 # sentence-transformers>=3.0 # local cross-encoder reranker
