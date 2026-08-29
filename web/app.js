@@ -8,6 +8,11 @@ const sendBtn = document.getElementById("send");
 const statusDot = document.getElementById("status-dot");
 const statusText = document.getElementById("status-text");
 const themeToggle = document.getElementById("theme-toggle");
+const docModal = document.getElementById("doc-modal");
+const docModalBackdrop = document.getElementById("doc-modal-backdrop");
+const docModalClose = document.getElementById("doc-modal-close");
+const docModalTitle = document.getElementById("doc-modal-title");
+const docModalBody = document.getElementById("doc-modal-body");
 
 const history = []; // [{role, content}]
 let indexed = 0;
@@ -171,6 +176,83 @@ function formatMeta(trace, sourceCount) {
   return parts.join(" · ");
 }
 
+// ---------- document preview ----------
+// Click-to-view for a citation's original file. PDF renders in the browser's
+// own viewer; docx/xlsx render client-side via CDN libraries loaded on first
+// use, so a visitor who never opens a document never pays for them; every
+// other supported format is plain text, shown as-is.
+
+function closeDocModal() {
+  docModal.hidden = true;
+  docModalBody.innerHTML = "";
+}
+docModalBackdrop.addEventListener("click", closeDocModal);
+docModalClose.addEventListener("click", closeDocModal);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !docModal.hidden) closeDocModal();
+});
+
+const loadedScripts = new Set();
+function loadScriptOnce(src) {
+  if (loadedScripts.has(src)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = src;
+    el.onload = () => { loadedScripts.add(src); resolve(); };
+    el.onerror = () => reject(new Error(`could not load ${src}`));
+    document.head.appendChild(el);
+  });
+}
+
+function assertOk(res) {
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res;
+}
+
+async function openDocument(source, heading) {
+  docModalTitle.textContent = heading ? `${shortSource(source)} ‹ ${heading}` : shortSource(source);
+  docModalBody.innerHTML = `<p class="doc-status">Loading&hellip;</p>`;
+  docModal.hidden = false;
+
+  const ext = (source.split(".").pop() || "").toLowerCase();
+  const url = `/source?path=${encodeURIComponent(source)}`;
+
+  try {
+    if (ext === "pdf") {
+      docModalBody.innerHTML = `<iframe class="doc-frame" src="${url}"></iframe>`;
+    } else if (ext === "docx") {
+      await loadScriptOnce("https://unpkg.com/jszip@3.10.1/dist/jszip.min.js");
+      await loadScriptOnce("https://unpkg.com/docx-preview@0.4.0/dist/docx-preview.min.js");
+      const buf = await fetch(url).then(assertOk).then((r) => r.arrayBuffer());
+      docModalBody.innerHTML = "";
+      await window.docx.renderAsync(buf, docModalBody);
+    } else if (ext === "xlsx") {
+      await loadScriptOnce("https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js");
+      const buf = await fetch(url).then(assertOk).then((r) => r.arrayBuffer());
+      const wb = window.XLSX.read(buf, { type: "array" });
+      docModalBody.innerHTML = "";
+      const wrap = document.createElement("div");
+      wrap.className = "doc-sheets";
+      wb.SheetNames.forEach((name) => {
+        const section = document.createElement("section");
+        section.className = "doc-sheet";
+        section.innerHTML = `<h4>${escapeHtml(name)}</h4>${window.XLSX.utils.sheet_to_html(wb.Sheets[name])}`;
+        wrap.appendChild(section);
+      });
+      docModalBody.appendChild(wrap);
+    } else {
+      const text = await fetch(url).then(assertOk).then((r) => r.text());
+      docModalBody.innerHTML = "";
+      const pre = document.createElement("pre");
+      pre.className = "doc-text";
+      pre.textContent = text;
+      docModalBody.appendChild(pre);
+    }
+  } catch (err) {
+    docModalBody.innerHTML = `<p class="doc-status doc-status--error">Could not load this document: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
 function excerptChip(labelHtml, source, heading, excerpt, { quote = false } = {}) {
   const chip = document.createElement("button");
   chip.type = "button";
@@ -182,6 +264,7 @@ function excerptChip(labelHtml, source, heading, excerpt, { quote = false } = {}
     <div class="citation-pop" role="tooltip">
       <div class="citation-pop-excerpt${quote ? " citation-pop-excerpt--quote" : ""}">${shown}</div>
       <div class="citation-pop-source">${escapeHtml(source)}${heading ? " &rsaquo; " + escapeHtml(heading) : ""}</div>
+      <div class="citation-pop-open" tabindex="0" role="button">Open document &rarr;</div>
     </div>`;
   chip.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -193,6 +276,18 @@ function excerptChip(labelHtml, source, heading, excerpt, { quote = false } = {}
     if (!isOpen) {
       chip.classList.add("is-open");
       chip.setAttribute("aria-expanded", "true");
+    }
+  });
+  const openTrigger = chip.querySelector(".citation-pop-open");
+  const activateOpen = (e) => {
+    e.stopPropagation();
+    openDocument(source, heading);
+  };
+  openTrigger.addEventListener("click", activateOpen);
+  openTrigger.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      activateOpen(e);
     }
   });
   return chip;

@@ -70,6 +70,19 @@
 
 </div>
 
+<div class="doc-modal" id="doc-modal" hidden>
+  <div class="doc-modal-backdrop" id="doc-modal-backdrop"></div>
+  <div class="doc-modal-panel" role="dialog" aria-modal="true" aria-labelledby="doc-modal-title">
+    <div class="doc-modal-header">
+      <span class="doc-modal-title" id="doc-modal-title"></span>
+      <button class="icon-btn" id="doc-modal-close" aria-label="Close document preview">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3 3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="doc-modal-body" id="doc-modal-body"></div>
+  </div>
+</div>
+
 <template id="tpl-user">
   <div class="msg msg--user">
     <div class="bubble"></div>

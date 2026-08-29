@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -146,6 +147,26 @@ async def upload(files: list[UploadFile] = File(...),
         raise HTTPException(422, str(exc)) from exc
     get_store.cache_clear()
     return {**report.as_dict(), "saved_files": saved}
+
+
+@app.get("/source")
+def source(path: str) -> FileResponse:
+    """Serve an indexed document's original bytes, for in-browser preview.
+
+    `path` is client-supplied, so it's never used to build a filesystem path
+    from scratch -- it's only accepted if it exactly matches some chunk's
+    `source` already in the index. That's a stronger check than a path-
+    traversal guard: sources are only ever set by the (admin-gated) ingest
+    pipeline, so this can't be tricked into serving a file nobody chose to
+    index, regardless of where on disk it actually lives.
+    """
+    known_sources = {c.source for c in get_store().all_chunks()}
+    if path not in known_sources:
+        raise HTTPException(404, "not an indexed document")
+    candidate = Path(path)
+    if not candidate.is_file():
+        raise HTTPException(404, "file not found on disk")
+    return FileResponse(candidate)
 
 
 @app.get("/documents")

@@ -144,7 +144,11 @@ make eval                         # scores against eval/data/golden.jsonl
 `make serve` starts the API on `:8000` and also serves `web/` — a small chat
 console (no framework, no build step) at `http://localhost:8000` for demoing
 the pipeline to someone who isn't going to read `curl` output. Same citations,
-refusals and cost/latency numbers the API returns, just legible.
+refusals and cost/latency numbers the API returns, just legible. Every
+citation opens the actual source document — PDF in the browser's own viewer,
+docx/xlsx rendered client-side (`docx-preview` / SheetJS, loaded on first
+use), everything else as plain text — served from `GET /source`, which only
+answers for a path some chunk in the index actually points at.
 
 `http://localhost:8000/admin.html` uploads and indexes files directly (not
 linked from the chat page, not in the sitemap). It calls `POST /upload`, which
@@ -303,6 +307,11 @@ evidence is signalling something no benchmark table can.
   against this pipeline and may need a different OCR backend. A page that
   yields no text at all — OCR failed or no engine is installed — raises
   instead of silently ingesting as empty content.
+- **Word and Excel ingest text only** (`python-docx` / `openpyxl`) — no OCR
+  path, so a scanned document saved as .docx (rare, but it happens) yields
+  nothing. Headings map to Markdown for .docx so structure-first chunking
+  still splits on them; .xlsx renders one record block per row, same shape
+  as the CSV loader.
 
 ## Using this for a client engagement
 
@@ -349,12 +358,12 @@ grouped by cause" is a different conversation from "I've set up LangChain."
 ```
 core/eval/        shared, system-agnostic eval framework: metrics, judge, baseline, CLI
 app/core/         config, providers (openai/anthropic/openrouter/ollama/mock), retry, tracing, cost budget
-app/ingest/       loaders (md/html/csv/json/pdf), 5 chunking strategies, idempotent pipeline
+app/ingest/       loaders (md/html/csv/json/pdf/docx/xlsx), 5 chunking strategies, idempotent pipeline
 app/store/        SQLiteStore (default), PgVectorStore (scale), shared interface
 app/retrieve/     BM25, RRF hybrid, LLM + cross-encoder reranker, multi-turn query rewriting
 app/answer/       cited generation, refusal guardrails, PII redaction
 app/evaluation/   the RAG-specific adapter into core/eval, and the golden-set bootstrapper
-app/api.py        FastAPI: /ask /ingest /upload /documents /health, serves web/ at "/"
+app/api.py        FastAPI: /ask /ingest /upload /documents /source /health, serves web/ at "/"
 app/cli.py        ingest, ask, chat, stats, bootstrap-eval
 web/              chat console + admin.html upload panel (vanilla JS, no build step)
 eval/             golden set, calibration template, ablations, HTML/PNG report tooling

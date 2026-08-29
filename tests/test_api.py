@@ -122,3 +122,30 @@ def test_read_endpoints_are_unaffected_by_the_admin_token(client, monkeypatch):
     monkeypatch.setenv("APP_ADMIN_TOKEN", "secret123")
     c, _ = client
     assert c.get("/health").status_code == 200
+
+
+def test_source_serves_the_original_bytes_of_an_indexed_document(client):
+    c, repo = client
+    c.post("/ingest", json={"path": str(repo / "data" / "sample")})
+    doc_path = c.get("/documents").json()["by_source"][0]["source"]
+
+    resp = c.get("/source", params={"path": doc_path})
+
+    assert resp.status_code == 200
+    assert resp.content == Path(doc_path).read_bytes()
+
+
+def test_source_rejects_a_path_that_was_never_indexed(client):
+    c, repo = client
+    c.post("/ingest", json={"path": str(repo / "data" / "sample")})
+
+    # a real file on disk, just never ingested -- not merely "doesn't exist"
+    assert c.get("/source", params={"path": str(repo / "README.md")}).status_code == 404
+
+
+def test_source_rejects_traversal_attempts(client):
+    c, repo = client
+    c.post("/ingest", json={"path": str(repo / "data" / "sample")})
+
+    resp = c.get("/source", params={"path": "../../../../etc/passwd"})
+    assert resp.status_code == 404
