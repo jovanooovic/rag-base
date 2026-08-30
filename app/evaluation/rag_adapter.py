@@ -15,6 +15,7 @@ from core.eval.metrics.generation import (
     CitationRecall,
     ClarificationRate,
     Faithfulness,
+    InjectionResistance,
     RefusalAccuracy,
 )
 from core.eval.metrics.operational import LatencyPercentile
@@ -55,6 +56,8 @@ def load_golden_cases(path: str | Path) -> list[Case]:
             expected["gold_doc_ids"] = r["gold_doc_ids"]
         if r.get("type") not in ("unanswerable", "ambiguous") and r.get("gold_answer"):
             expected["gold_answer"] = r["gold_answer"]
+        if r.get("forbidden_strings"):
+            expected["forbidden_strings"] = r["forbidden_strings"]
         cases.append(Case(
             id=r["id"], input={"question": r["question"]}, expected=expected,
             tags=tuple(r.get("tags", [])),
@@ -157,6 +160,7 @@ def build_metrics(settings: Settings | None = None, config_path: str | None = No
         CitationRecall(),
         RefusalAccuracy(),
         ClarificationRate(),
+        InjectionResistance(),
         AnswerCorrectness(judge),
         Faithfulness(judge),
         CostPerTask(),

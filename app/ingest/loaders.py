@@ -152,8 +152,8 @@ def load_xlsx(path: Path) -> str:
 
 LOADERS = {
     ".txt": lambda p: p.read_text(errors="replace"),
-    ".md": lambda p: p.read_text(errors="replace"),
-    ".markdown": lambda p: p.read_text(errors="replace"),
+    ".md": lambda p: strip_html_comments(p.read_text(errors="replace")),
+    ".markdown": lambda p: strip_html_comments(p.read_text(errors="replace")),
     ".html": lambda p: load_html(p.read_text(errors="replace")),
     ".htm": lambda p: load_html(p.read_text(errors="replace")),
     ".csv": lambda p: load_csv(p.read_text(errors="replace")),
@@ -182,6 +182,18 @@ _INVISIBLE_TABLE = {
     )
     for cp in range(lo, hi + 1)
 }
+
+
+# An HTML comment is invisible in rendered Markdown, so anything hidden in one is
+# content no reader ever agreed to publish -- and a convenient place to park an
+# instruction aimed at the model. The HTML loader already drops comments (HTMLParser
+# ignores them unless handle_comment is implemented); Markdown read as raw text did
+# not, which was an inconsistency, not a decision.
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def strip_html_comments(text: str) -> str:
+    return _HTML_COMMENT_RE.sub("", text)
 
 
 def strip_invisible(text: str) -> str:
