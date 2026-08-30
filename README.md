@@ -143,28 +143,40 @@ see `eval/ablations.py` for why that's the right scope). Reproduce with `make ab
 
 | chunking | retrieval | reranker | recall@5 | recall@10 | mrr | ndcg@5 |
 |---|---|---|---|---|---|---|
-| structure-first | dense-only | off | 0.9583 | 0.9815 | 0.8466 | 0.8473 |
-| structure-first | bm25-only | off | 0.9630 | 0.9769 | 0.9105 | 0.9032 |
-| structure-first | hybrid-rrf | off | 0.9630 | 0.9722 | 0.9290 | 0.9161 |
-| fixed-512 | dense-only | off | 0.9259 | 0.9444 | 0.8630 | 0.8470 |
-| fixed-512 | bm25-only | off | 0.9630 | 0.9815 | 0.8907 | 0.8905 |
-| fixed-512 | hybrid-rrf | off | 0.9583 | 0.9907 | 0.9168 | 0.9016 |
-| fixed-1024 | dense-only | off | 0.9583 | 0.9861 | 0.8745 | 0.8727 |
-| fixed-1024 | bm25-only | off | 0.9444 | 0.9722 | 0.8629 | 0.8717 |
-| fixed-1024 | hybrid-rrf | off | 0.9676 | 0.9861 | 0.9095 | 0.9062 |
-| recursive-overlap | dense-only | off | 0.9491 | 0.9861 | 0.8276 | 0.8303 |
-| recursive-overlap | bm25-only | off | 0.9583 | 0.9769 | 0.8691 | 0.8766 |
-| recursive-overlap | hybrid-rrf | off | 0.9583 | 0.9907 | 0.8993 | 0.8919 |
-| semantic | dense-only | off | 0.8565 | 0.9259 | 0.7822 | 0.7661 |
-| semantic | bm25-only | off | 0.9491 | 0.9676 | 0.9213 | 0.9021 |
-| semantic | hybrid-rrf | off | 0.9352 | 0.9537 | 0.8748 | 0.8611 |
+| structure-first | dense-only | off | 1.0000 | 1.0000 | 0.9903 | 0.9894 |
+| structure-first | bm25-only | off | 0.9542 | 0.9833 | 0.9167 | 0.9020 |
+| structure-first | hybrid-rrf | off | 0.9833 | 0.9958 | 0.9824 | 0.9710 |
+| fixed-512 | dense-only | off | 0.9958 | 1.0000 | 0.9736 | 0.9747 |
+| fixed-512 | bm25-only | off | 0.9708 | 0.9917 | 0.9139 | 0.9103 |
+| fixed-512 | hybrid-rrf | off | 0.9917 | 0.9917 | 0.9792 | 0.9756 |
+| fixed-1024 | dense-only | off | 1.0000 | 1.0000 | 0.9688 | 0.9714 |
+| fixed-1024 | bm25-only | off | 0.9667 | 0.9833 | 0.8986 | 0.9024 |
+| fixed-1024 | hybrid-rrf | off | 1.0000 | 1.0000 | 0.9778 | 0.9778 |
+| recursive-overlap | dense-only | off | 0.9958 | 1.0000 | 0.9537 | 0.9531 |
+| recursive-overlap | bm25-only | off | 0.9708 | 0.9875 | 0.8847 | 0.8908 |
+| recursive-overlap | hybrid-rrf | off | 0.9875 | 1.0000 | 0.9748 | 0.9673 |
+| semantic | dense-only | off | 0.9833 | 0.9917 | 0.9276 | 0.9348 |
+| semantic | bm25-only | off | 0.9708 | 0.9833 | 0.9181 | 0.9120 |
+| semantic | hybrid-rrf | off | 0.9875 | 0.9917 | 0.9569 | 0.9573 |
 
-At this corpus size (13 docs, 51 chunks) none of the differences are large enough to
-call a clear winner — `structure-first + hybrid-rrf` (the shipped default) sits in the
-top cluster on every column, and `semantic + dense-only` is the clearest loser (worst
-mrr and ndcg@5 by a real margin). That is the honest reading, not "structure-first
-wins": a 13-document corpus does not have enough signal to separate the top four rows,
-and this table is exactly what tells you that rather than letting you guess.
+**The shipped default is not the top row, and the table is here to say so.**
+`structure-first + dense-only` leads on recall@5 (1.0000) and mrr (0.9903); the shipped
+`structure-first + hybrid-rrf` sits just behind at 0.9833 / 0.9824. On 120 scored cases
+that gap is two cases — well inside the noise this corpus can resolve, so the correct
+reading is "indistinguishable", not "dense-only wins". The one robust signal is that
+`bm25-only` is worst on mrr in every chunking row.
+
+**This table also cannot see the reason hybrid is the default.** Hybrid exists so exact
+identifiers — order numbers, SKUs, error codes — survive retrieval, and this synthetic
+corpus is almost entirely prose with very few of them. The ablation measures the case
+hybrid was *not* bought for, which is why the default stays hybrid despite dense-only
+edging it here. On a client corpus full of `ACM-4417291`-shaped strings, run this again
+before concluding anything.
+
+Compare against the earlier version of this table (weaker local embeddings) and
+`dense-only` was the *clearest loser*; with `qwen3-embedding-8b` it tops the chart. Same
+code, same corpus shape, different embedding quality, opposite conclusion — the same
+lesson the reranker rows teach in the scorecard above.
 
 `reranker: cross-encoder` rows report `skipped` unless `sentence-transformers` is
 installed — that's an optional dependency, not a missing feature.
