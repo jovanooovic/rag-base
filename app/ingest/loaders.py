@@ -165,6 +165,28 @@ LOADERS = {
 
 SUPPORTED = tuple(LOADERS)
 
+# Codepoints that render as nothing but survive copy-paste into a document:
+# zero-width spaces/joiners, the bidi overrides, and the BOM. They are the
+# standard way to hide an instruction from a human reviewer while leaving it
+# perfectly legible to the model -- someone eyeballing the page in Word sees a
+# clean paragraph, the retriever sees the payload. Written as hex ranges on
+# purpose: a source file that itself contains invisible characters is neither
+# reviewable nor greppable.
+_INVISIBLE_TABLE = {
+    cp: None
+    for lo, hi in (
+        (0x200B, 0x200F),   # zero-width space/non-joiner/joiner, LTR/RTL marks
+        (0x202A, 0x202E),   # bidi embedding and override
+        (0x2066, 0x2069),   # bidi isolates
+        (0xFEFF, 0xFEFF),   # BOM / zero-width no-break space
+    )
+    for cp in range(lo, hi + 1)
+}
+
+
+def strip_invisible(text: str) -> str:
+    return text.translate(_INVISIBLE_TABLE)
+
 
 def load_path(path: str | Path) -> Iterator[Document]:
     """Yield Documents from a file or (recursively) a directory."""
@@ -180,7 +202,9 @@ def load_path(path: str | Path) -> Iterator[Document]:
         ext = f.suffix.lower()
         if ext not in LOADERS:
             continue
-        text = LOADERS[ext](f)
+        # Applied here rather than in each loader so every format -- including
+        # ones added later -- gets it without anyone having to remember.
+        text = strip_invisible(LOADERS[ext](f))
         if not text.strip():
             continue
         yield Document(

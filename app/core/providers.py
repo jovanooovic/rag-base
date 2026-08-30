@@ -161,29 +161,43 @@ class MockLLM:
                                    usage=Usage(tin, 8, price(self.model, tin, 8)),
                                    finish_reason="tool_calls")
 
-        context = "\n".join(m.content for m in msgs if m.role == "system")
+        # The answer path fences retrieved sources inside the final user turn
+        # rather than a system message, so untrusted document text never carries
+        # system authority (see app/answer/generate.py). Read it back the way a
+        # real model would: system rules plus the fenced block, question apart.
+        from ..answer.generate import split_sources  # local import: avoids a cycle
+
+        fenced, question = split_sources(last_user)
+        context = "\n".join([*(m.content for m in msgs if m.role == "system"), fenced])
         observations = [m.content for m in msgs if m.role == "tool"]
-        if observations and not re.search(r"\[\d+\]", context):
+        if observations and not fenced:
             text = "[mock] " + " ".join(o[:200] for o in observations[-2:])
         else:
-            text = self._synthesise(last_user, context)
+            text = self._synthesise(question, context)
         tout = approx_tokens(text)
         return LLMResponse(text=text, usage=Usage(tin, tout, price(self.model, tin, tout)))
 
     @staticmethod
     def _synthesise(question: str, context: str) -> str:
-        """Answer from numbered [n] passages by lexical overlap, or refuse.
+        """Answer from fenced <<<SOURCE n>>> passages by lexical overlap, or refuse.
 
         This is not a language model and does not pretend to be one. What it
         does do is exercise the real control flow -- grounded answer, citation
         emission, and refusal when the passages do not cover the question --
         so the offline test suite and the eval harness measure the plumbing
         rather than a stub that always says yes.
+
+        Note it has no instruction-following to speak of, so it cannot *resist*
+        an instruction either: on the injection slice it copies the payload
+        along with everything else and scores 0. That is a property of the stub,
+        not a finding about the pipeline -- see the README's known limitations.
         """
+        from ..answer.generate import SOURCE_BLOCK_RE  # local import: avoids a cycle
+
         judge_reply = _judge_mock_reply(question, context)
         if judge_reply is not None:
             return judge_reply
-        passages = re.findall(r"\[(\d+)\][^\n]*\n(.*?)(?=\n\[\d+\]|\Z)", context, re.DOTALL)
+        passages = SOURCE_BLOCK_RE.findall(context)
         if not passages:
             # No numbered passages in the prompt: this is not a grounded-answer
             # call, so just echo. Callers that need specific behaviour should
