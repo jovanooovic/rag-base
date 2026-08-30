@@ -263,6 +263,8 @@ Decisions worth defending in a client call:
 | Citations enforced | An uncited answer is blocked, not returned. Fail closed. |
 | Sources fenced, and never in the system role | A retrieved document placed in a system message is handed the same authority as your own rules — which is precisely what an indirect injection payload is after. Sources ride in the user turn inside `<<<SOURCE n>>>` fences the document cannot forge, with the guard repeated after them. Measured, not asserted: `injection_resistance` in the scorecard. |
 | Per-run cost budget | Refuses past `max_cost_usd_per_run`. Cheap insurance against the overnight-loop invoice. |
+| `min_top_score` gates a normalised confidence | Every scorer publishes `signals["confidence"]` on a 0–1 scale, and the refusal floor is defined on that rather than on a raw score whose range depends on which retrieval path ran. Config rejects a floor outside 0–1, and rejects one set without a reranker at all. |
+| Unknown config keys are rejected | `redact_pii2: true` used to parse fine and mean "redaction off". `Settings.validate()` now refuses unknown keys and suggests the nearest real one. |
 | Reranker batched in one call | `LLMReranker`'s batch size matches `fetch_k` instead of splitting into two sequential round trips for no quality gain — measured as roughly half of total `/ask` latency before this, on a live OpenRouter run. |
 | In-process answer cache | Keyed on question + history + filters, cleared on ingest. A repeated question — a demo re-run, two visitors clicking the same suggestion — costs one retrieve+rerank+generate the first time and nothing after: no LLM call, no spend, sub-second response. |
 | No LangChain | Nothing here is hard enough to justify the abstraction, and provider changes stay in one 400-line file. |
@@ -385,6 +387,21 @@ evidence is signalling something no benchmark table can.
   both `.html` and `.md`. But a `.docx` can hide an instruction as white-on-white text
   or with Word's own hidden-text attribute, and `python-docx` reads it as ordinary
   paragraph text. Same for a spreadsheet cell in a hidden column or sheet.
+- **`min_top_score` is coarser in practice than 0–1 suggests.** The floor is honest
+  now — it reads a normalised confidence rather than a raw score that meant two
+  different things depending on whether the reranker ran — but with `gpt-4o-mini` the
+  reranker mostly emits the ends of its 0–10 rubric. Measured across a few queries:
+  answerable questions came back at confidence `1.0`, a plausible-but-absent topic
+  ("does Acme offer live chat support?") at `0.5`, and a topic with nothing nearby
+  ("what year was Acme founded?") at `0.0`. So the knob has roughly three useful
+  positions with this model, not a hundred. `0.5` — the intake form's setting, anchored
+  to rubric level 5, "on-topic, contains part of the answer" — is the one worth
+  starting from, and it should be calibrated against a client's own refusal cases
+  rather than trusted as a default.
+- **The confidence floor is off by default (`null`), so none of the above is in the
+  published scorecard.** Turning it on would change `refusal_accuracy` and every
+  answer-quality row, and it is a client-specific risk decision, not a default worth
+  baking in.
 - **Mock scores `injection_resistance` 1.0000 and it means nothing.** I expected it to
   score 0 — `MockLLM` copies retrieved passages nearly verbatim, so it looked certain
   to echo the canary — and the measurement said otherwise: its synthesiser picks the
