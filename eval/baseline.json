@@ -1,401 +1,401 @@
 {
   "label": "baseline",
-  "n_cases": 135,
+  "n_cases": 147,
   "meta": {
-    "git_sha": "b77f05bf181c"
+    "git_sha": "9848401cb719"
   },
   "baseline": null,
   "metrics": [
     {
       "name": "mrr",
-      "value": 0.8726,
+      "value": 0.8584,
       "ci": [
-        0.8229,
-        0.9185
+        0.8087,
+        0.9044
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "recall@1",
-      "value": 0.6481,
+      "value": 0.65,
       "ci": [
-        0.5694,
-        0.7222
+        0.575,
+        0.725
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "precision@1",
-      "value": 0.787,
+      "value": 0.7667,
       "ci": [
-        0.7037,
-        0.8611
+        0.6917,
+        0.8417
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "hit_rate@1",
-      "value": 0.787,
+      "value": 0.7667,
       "ci": [
-        0.7037,
-        0.8611
+        0.6917,
+        0.8417
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "ndcg@1",
-      "value": 0.787,
+      "value": 0.7667,
       "ci": [
-        0.7037,
-        0.8611
+        0.6917,
+        0.8417
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "recall@3",
-      "value": 0.8935,
+      "value": 0.8917,
       "ci": [
-        0.8426,
-        0.9398
+        0.8458,
+        0.9333
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "precision@3",
-      "value": 0.3889,
+      "value": 0.3778,
       "ci": [
-        0.3611,
-        0.4167
+        0.35,
+        0.4056
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "hit_rate@3",
-      "value": 0.963,
+      "value": 0.9583,
       "ci": [
-        0.9259,
-        0.9907
+        0.9167,
+        0.9917
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "ndcg@3",
-      "value": 0.8395,
+      "value": 0.8317,
       "ci": [
-        0.7892,
-        0.8863
+        0.7835,
+        0.8777
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "recall@5",
-      "value": 0.9444,
+      "value": 0.9292,
       "ci": [
-        0.9074,
-        0.9769
+        0.8917,
+        0.9625
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "precision@5",
-      "value": 0.25,
+      "value": 0.2383,
       "ci": [
-        0.2315,
-        0.2685
+        0.2217,
+        0.255
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "hit_rate@5",
-      "value": 0.9815,
+      "value": 0.975,
       "ci": [
-        0.9537,
+        0.9417,
         1.0
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "ndcg@5",
-      "value": 0.8627,
+      "value": 0.8484,
       "ci": [
-        0.8193,
-        0.9027
+        0.8042,
+        0.89
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "recall@10",
-      "value": 0.9954,
+      "value": 0.9833,
       "ci": [
-        0.9861,
+        0.9625,
         1.0
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "precision@10",
-      "value": 0.1359,
+      "value": 0.1292,
       "ci": [
-        0.1269,
-        0.1453
+        0.1206,
+        0.1379
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "hit_rate@10",
-      "value": 1.0,
+      "value": 0.9917,
       "ci": [
-        1.0,
+        0.975,
         1.0
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "ndcg@10",
-      "value": 0.8816,
+      "value": 0.8691,
       "ci": [
-        0.8448,
-        0.9159
+        0.8315,
+        0.9044
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "mrr_reranked",
-      "value": 0.64,
+      "value": 0.7676,
       "ci": [
-        0.5812,
-        0.6991
+        0.7114,
+        0.8208
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "recall@1_reranked",
-      "value": 0.3287,
+      "value": 0.5292,
       "ci": [
-        0.25,
-        0.4074
+        0.45,
+        0.6083
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "precision@1_reranked",
-      "value": 0.4074,
+      "value": 0.6167,
       "ci": [
-        0.3148,
-        0.5
+        0.525,
+        0.7
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "hit_rate@1_reranked",
-      "value": 0.4074,
+      "value": 0.6167,
       "ci": [
-        0.3148,
-        0.5
+        0.525,
+        0.7
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "ndcg@1_reranked",
-      "value": 0.4074,
+      "value": 0.6167,
       "ci": [
-        0.3148,
-        0.5
+        0.525,
+        0.7
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "recall@3_reranked",
-      "value": 0.8287,
+      "value": 0.8792,
       "ci": [
-        0.7639,
-        0.8889
+        0.8292,
+        0.925
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "precision@3_reranked",
-      "value": 0.3673,
+      "value": 0.3847,
       "ci": [
-        0.3349,
-        0.4012
+        0.3556,
+        0.4139
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "hit_rate@3_reranked",
-      "value": 0.9074,
+      "value": 0.95,
       "ci": [
-        0.8519,
-        0.9537
+        0.9083,
+        0.9833
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "ndcg@3_reranked",
-      "value": 0.6556,
+      "value": 0.7698,
       "ci": [
-        0.5977,
-        0.7124
+        0.7171,
+        0.8203
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "recall@5_reranked",
-      "value": 0.8843,
+      "value": 0.9042,
       "ci": [
-        0.8333,
-        0.9306
+        0.8625,
+        0.9458
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "precision@5_reranked",
-      "value": 0.3336,
+      "value": 0.3283,
       "ci": [
-        0.3046,
-        0.3644
+        0.3015,
+        0.3569
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "hit_rate@5_reranked",
-      "value": 0.963,
+      "value": 0.9667,
       "ci": [
-        0.9259,
-        0.9907
+        0.9333,
+        0.9917
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "ndcg@5_reranked",
-      "value": 0.682,
+      "value": 0.781,
       "ci": [
-        0.6308,
-        0.7322
+        0.7319,
+        0.828
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "citation_precision",
-      "value": 0.7135,
+      "value": 0.7233,
       "ci": [
-        0.6292,
-        0.7921
+        0.6456,
+        0.7961
       ],
-      "n": 89,
+      "n": 103,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "citation_recall",
-      "value": 0.6157,
+      "value": 0.6417,
       "ci": [
-        0.5324,
-        0.6991
+        0.5625,
+        0.7208
       ],
-      "n": 108,
+      "n": 120,
       "higher_is_better": true,
       "extra": {},
       "delta": null
     },
     {
       "name": "refusal_accuracy",
-      "value": 0.7407,
+      "value": 0.6667,
       "ci": [
-        0.5556,
-        0.8889
+        0.4815,
+        0.8519
       ],
       "n": 27,
       "higher_is_better": true,
@@ -415,13 +415,25 @@
       "delta": null
     },
     {
-      "name": "answer_correctness",
-      "value": 0.5658,
+      "name": "injection_resistance",
+      "value": 1.0,
       "ci": [
-        0.4842,
-        0.65
+        1.0,
+        1.0
       ],
-      "n": 95,
+      "n": 12,
+      "higher_is_better": true,
+      "extra": {},
+      "delta": null
+    },
+    {
+      "name": "answer_correctness",
+      "value": 0.5678,
+      "ci": [
+        0.4907,
+        0.6472
+      ],
+      "n": 107,
       "higher_is_better": true,
       "extra": {
         "mean_judge_disagreement": 0.0
@@ -430,12 +442,12 @@
     },
     {
       "name": "faithfulness",
-      "value": 0.9494,
+      "value": 0.9475,
       "ci": [
-        0.944,
-        0.9546
+        0.9422,
+        0.9524
       ],
-      "n": 89,
+      "n": 103,
       "higher_is_better": true,
       "extra": {
         "mean_judge_disagreement": 0.0
@@ -447,61 +459,61 @@
       "value": 0.0012,
       "ci": [
         0.0012,
-        0.0012
+        0.0013
       ],
-      "n": 135,
+      "n": 147,
       "higher_is_better": false,
       "extra": {
-        "p50": 0.001197,
-        "p95": 0.001307
+        "p50": 0.001248,
+        "p95": 0.001352
       },
       "delta": null
     },
     {
       "name": "latency_total_ms",
-      "value": 10.6044,
+      "value": 12.9224,
       "ci": [
-        10.063,
-        11.157
+        12.2925,
+        13.5762
       ],
-      "n": 135,
+      "n": 147,
       "higher_is_better": false,
       "extra": {
-        "p50": 10.6,
-        "p95": 15.1,
-        "p99": 16.4
+        "p50": 12.9,
+        "p95": 17.7,
+        "p99": 26.8
       },
       "delta": null
     },
     {
       "name": "latency_retrieve_ms",
-      "value": 7.7336,
+      "value": 9.8886,
       "ci": [
-        7.2524,
-        8.2281
+        9.305,
+        10.5014
       ],
-      "n": 135,
+      "n": 147,
       "higher_is_better": false,
       "extra": {
-        "p50": 7.77,
-        "p95": 11.6,
-        "p99": 12.48
+        "p50": 10.28,
+        "p95": 14.17,
+        "p99": 24.88
       },
       "delta": null
     },
     {
       "name": "latency_answer_ms",
-      "value": 0.0973,
+      "value": 0.0848,
       "ci": [
-        0.0949,
-        0.0996
+        0.0822,
+        0.0875
       ],
-      "n": 135,
+      "n": 147,
       "higher_is_better": false,
       "extra": {
-        "p50": 0.1,
-        "p95": 0.12,
-        "p99": 0.13
+        "p50": 0.08,
+        "p95": 0.11,
+        "p99": 0.12
       },
       "delta": null
     }
