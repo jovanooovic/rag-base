@@ -143,3 +143,17 @@ def test_guardrail_passes_a_clarification_through_uncited_and_ignores_score_floo
 def test_redaction_catches_common_pii(raw, label):
     out = redact(raw)
     assert f"<{label}>" in out
+
+
+def test_mock_reads_fenced_sources_from_a_chunk_with_a_heading_path():
+    """Regression: the fence header regex used to stop at the first '>', and
+    citation_text separates the heading path with ' > '. Every fixture here had
+    no heading, so unit tests passed while every real document failed."""
+    chunk = Chunk("c0", "d", "Refunds take 30 days.", "refunds.md", 0,
+                  heading_path="Acme Refunds > Standard window")
+    llm = MockLLM()
+
+    ans = answer_question(llm, "how long do refunds take", [ScoredChunk(chunk, 1.0)])
+
+    assert ans.answered, "mock found no passages -- the fence regex missed the header"
+    assert ans.used_citations == [1]
