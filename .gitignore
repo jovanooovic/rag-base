@@ -2,7 +2,12 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+# Every .env variant, not just the bare name: .env.local, .env.production
+# and .env.backup would otherwise be committable, and one of them will
+# eventually exist. .env.example is the tracked template and is exempt.
 .env
+.env.*
+!.env.example
 data/*.db
 data/ingest_state.json
 data/uploads/
