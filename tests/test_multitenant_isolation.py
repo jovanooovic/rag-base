@@ -8,27 +8,16 @@ predicate that happens to work on hand-written ids is not evidence.
 """
 from __future__ import annotations
 
-import os
-import re
-
 import pytest
 
 from app.ingest.chunking import Chunk
 
-ADMIN_DSN = os.environ.get("RAG_TEST_POSTGRES_DSN", "")
-pytestmark = pytest.mark.skipif(not ADMIN_DSN, reason="set RAG_TEST_POSTGRES_DSN to run")
+from tests.conftest import POSTGRES_ADMIN_DSN as ADMIN_DSN
+from tests.conftest import postgres_app_dsn as _app_dsn
+from tests.conftest import requires_postgres
 
-APP_ROLE, APP_PASSWORD = "rag_test_app", "app"
+pytestmark = requires_postgres
 
-
-def _app_dsn() -> str:
-    import psycopg
-    with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
-        if not admin.execute("SELECT 1 FROM pg_roles WHERE rolname = %s",
-                             (APP_ROLE,)).fetchone():
-            admin.execute(f"CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_PASSWORD}'")
-        admin.execute(f"GRANT CREATE, USAGE ON SCHEMA public TO {APP_ROLE}")
-    return re.sub(r"//[^@]+@", f"//{APP_ROLE}:{APP_PASSWORD}@", ADMIN_DSN)
 
 
 @pytest.fixture
@@ -41,7 +30,7 @@ def org():
     from app.store.directory import ROLE_MANAGER, Directory
     from app.store.pgvector_store import PgVectorStore
 
-    directory = Directory(ADMIN_DSN)
+    directory = Directory(_app_dsn())
     with directory._conn() as conn:
         for table in ("memberships", "documents", "departments", "users", "companies"):
             conn.execute(f"TRUNCATE {table} CASCADE")

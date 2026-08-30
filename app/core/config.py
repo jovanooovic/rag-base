@@ -19,6 +19,8 @@ DEFAULT_CONFIG_NAME = "project.config.json"
 KNOWN_EXTRA_KEYS: frozenset[str] = frozenset({
     # storage
     "store_backend", "postgres_dsn",
+    # multi-user tier: per-user document visibility (see app/store/access.py)
+    "multi_tenant",
     # retrieval
     "top_k", "fetch_k", "vector_weight", "keyword_weight",
     "use_reranker", "rewrite_queries",
@@ -122,6 +124,14 @@ class Settings:
             raise ConfigError("embedding_dim must be positive")
         if self.max_cost_usd_per_run <= 0:
             raise ConfigError("max_cost_usd_per_run must be positive")
+
+        if self.extra.get("multi_tenant") and self.extra.get("store_backend") != "pgvector":
+            raise ConfigError(
+                "multi_tenant requires store_backend 'pgvector'. SQLite has no per-user "
+                "visibility and refuses an AccessScope rather than ignoring one, so this "
+                "combination would fail on the first request instead of leaking -- but "
+                "it should fail here, at startup, where it is obvious."
+            )
 
         unknown = sorted(set(self.extra) - KNOWN_EXTRA_KEYS)
         if unknown:

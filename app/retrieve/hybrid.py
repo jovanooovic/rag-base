@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Sequence
 
+from ..store.access import AccessScope
 from ..store.base import ScoredChunk, VectorStore
 
 
@@ -71,13 +72,17 @@ class HybridRetriever:
         self.now = now
 
     def retrieve(self, query: str, *, top_k: int | None = None,
-                 where: dict[str, Any] | None = None, trace=None) -> list[ScoredChunk]:
+                 where: dict[str, Any] | None = None, trace=None,
+                 access: "AccessScope | None" = None) -> list[ScoredChunk]:
         top_k = top_k or self.top_k
         span = trace.span("retrieve", query=query[:200]) if trace else _null_span()
         with span:
             qvec = self.embeddings.embed([query])[0]
-            vector_hits = self.store.search(qvec, k=self.fetch_k, where=where)
-            keyword_hits = self.store.keyword_search(query, k=self.fetch_k, where=where)
+            # Both legs, always. Scoping one and not the other scopes
+            # neither -- the unscoped leg puts the row into the fused set.
+            vector_hits = self.store.search(qvec, k=self.fetch_k, where=where, access=access)
+            keyword_hits = self.store.keyword_search(query, k=self.fetch_k, where=where,
+                                                     access=access)
             fused = reciprocal_rank_fusion(
                 [vector_hits, keyword_hits],
                 weights=[self.vector_weight, self.keyword_weight],

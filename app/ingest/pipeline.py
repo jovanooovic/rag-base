@@ -8,6 +8,7 @@ from typing import Any, Iterable
 
 from ..core.config import Settings
 from ..core.providers import build_embeddings
+from ..store.access import DocumentACL
 from ..store.base import VectorStore
 from .chunking import Chunk, chunk_documents
 from .loaders import Document, load_path
@@ -70,12 +71,18 @@ class Ingestor:
             json.dumps({"version": STATE_VERSION, "chunks": self.state}, indent=2))
 
     def ingest_documents(self, docs: Iterable[Document], *, batch_size: int = 64,
-                         chunk_kwargs: dict[str, Any] | None = None) -> IngestReport:
+                         chunk_kwargs: dict[str, Any] | None = None,
+                         acl: "DocumentACL | None" = None) -> IngestReport:
         docs = list(docs)
         chunk_kwargs = dict(chunk_kwargs or {})
         if chunk_kwargs.get("strategy") == "semantic":
             chunk_kwargs.setdefault("embeddings", self.embeddings)
         chunks = chunk_documents(docs, **chunk_kwargs)
+        if acl is not None:
+            # Stamped after chunking so it lands on every chunk of the
+            # document, including ones a splitter created.
+            for c in chunks:
+                c.metadata.update(acl.as_metadata())
         report = IngestReport(documents=len(docs), chunks_seen=len(chunks))
 
         pending: list[Chunk] = []

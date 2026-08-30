@@ -4,18 +4,17 @@ Same skip rule as test_pgvector_store.py -- see its docstring.
 """
 from __future__ import annotations
 
-import os
-
 import pytest
 
-ADMIN_DSN = os.environ.get("RAG_TEST_POSTGRES_DSN", "")
-pytestmark = pytest.mark.skipif(not ADMIN_DSN, reason="set RAG_TEST_POSTGRES_DSN to run")
+from tests.conftest import postgres_app_dsn, requires_postgres
+
+pytestmark = requires_postgres
 
 
 @pytest.fixture
 def directory():
     from app.store.directory import Directory
-    d = Directory(ADMIN_DSN)
+    d = Directory(postgres_app_dsn())
     with d._conn() as conn:
         # Children first: every one of these is a FK into the next.
         for table in ("memberships", "documents", "departments", "users", "companies"):

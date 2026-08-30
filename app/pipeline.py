@@ -13,6 +13,7 @@ from .ingest.pipeline import Ingestor
 from .retrieve.hybrid import HybridRetriever
 from .retrieve.query import rewrite
 from .retrieve.rerank import LLMReranker
+from .store.access import AccessScope
 from .store.base import ScoredChunk
 from .store.sqlite_store import SQLiteStore
 
@@ -114,7 +115,8 @@ class RAGPipeline:
 
     # -- read side ------------------------------------------------------
     def ask(self, question: str, *, history: Sequence[Message] | None = None,
-            where: dict[str, Any] | None = None, top_k: int | None = None) -> RAGResult:
+            where: dict[str, Any] | None = None, top_k: int | None = None,
+            access: AccessScope | None = None) -> RAGResult:
         ex = self.settings.extra
         with self.trace.span("ask", question=question[:300]):
             queries = [question]
@@ -124,7 +126,8 @@ class RAGPipeline:
 
             merged: dict[str, ScoredChunk] = {}
             for q in queries:
-                for hit in self.retriever.retrieve(q, top_k=top_k, where=where, trace=self.trace):
+                for hit in self.retriever.retrieve(q, top_k=top_k, where=where,
+                                                   trace=self.trace, access=access):
                     prev = merged.get(hit.chunk.chunk_id)
                     if prev is None or hit.score > prev.score:
                         merged[hit.chunk.chunk_id] = hit

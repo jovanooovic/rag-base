@@ -12,34 +12,21 @@ storage layer either.
 """
 from __future__ import annotations
 
-import os
 import random
 
 import pytest
 
 from app.ingest.chunking import Chunk
 
-ADMIN_DSN = os.environ.get("RAG_TEST_POSTGRES_DSN", "")
-pytestmark = pytest.mark.skipif(not ADMIN_DSN, reason="set RAG_TEST_POSTGRES_DSN to run")
+from tests.conftest import POSTGRES_ADMIN_DSN as ADMIN_DSN
+from tests.conftest import postgres_app_dsn as _app_dsn
+from tests.conftest import requires_postgres
+
+pytestmark = requires_postgres
 
 # Request traffic must not connect as a superuser: superusers and BYPASSRLS
 # roles ignore policies entirely, so tests run as postgres would report RLS
 # working while it does nothing. This role is what production should look like.
-APP_ROLE, APP_PASSWORD = "rag_test_app", "app"
-
-
-def _app_dsn() -> str:
-    import psycopg
-    with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
-        exists = admin.execute(
-            "SELECT 1 FROM pg_roles WHERE rolname = %s", (APP_ROLE,)).fetchone()
-        if not exists:
-            admin.execute(f"CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_PASSWORD}'")
-        # Owns what it creates, so FORCE ROW LEVEL SECURITY has an owner to
-        # apply to -- but holds no superuser or BYPASSRLS attribute.
-        admin.execute(f"GRANT CREATE, USAGE ON SCHEMA public TO {APP_ROLE}")
-    import re
-    return re.sub(r"//[^@]+@", f"//{APP_ROLE}:{APP_PASSWORD}@", ADMIN_DSN)
 
 
 DSN = _app_dsn() if ADMIN_DSN else ""

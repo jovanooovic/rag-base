@@ -22,6 +22,7 @@ from .core.providers import Message
 from .core.trace import Trace
 from .ingest.loaders import SUPPORTED as SUPPORTED_EXTENSIONS
 from .pipeline import RAGPipeline, build_store
+from .store.access import AccessScope, DocumentACL
 
 app = FastAPI(title="RAG base", version="0.1.0",
               description="Retrieval-augmented answering over a client corpus.")
@@ -47,6 +48,39 @@ def get_settings() -> Settings:
 def get_store():
     """One store for the process. Cheap to share; expensive to rebuild per request."""
     return build_store(get_settings())
+
+
+@lru_cache(maxsize=1)
+def get_directory():
+    """Only built in the multi-user tier; the single-tenant one has no
+    directory to consult."""
+    settings = get_settings()
+    if not settings.extra.get("multi_tenant"):
+        return None
+    from .store.directory import Directory
+    return Directory(settings.extra["postgres_dsn"])
+
+
+def current_scope(x_debug_user: str = Header(default="", alias="X-Debug-User")
+                  ) -> AccessScope | None:
+    """Who this request runs as.
+
+    TEMPORARY: identity comes from a header any caller can set, which is no
+    identity at all. It exists so the isolation layer can be built and tested
+    before authentication lands, in that order deliberately -- auth first and
+    isolation second gives you a system where everyone logs in and still sees
+    everything. It is deleted in the auth phase, not left behind a flag.
+    """
+    settings = get_settings()
+    if not settings.extra.get("multi_tenant"):
+        return None
+    if not x_debug_user:
+        raise HTTPException(401, "no identity on this request")
+    directory = get_directory()
+    try:
+        return directory.scope_for(x_debug_user)
+    except LookupError as exc:
+        raise HTTPException(401, "unknown user") from exc
 
 
 def get_pipeline() -> RAGPipeline:
@@ -93,8 +127,13 @@ _ANSWER_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _ANSWER_CACHE_MAX = 200  # bounded so a long-running demo can't grow this forever
 
 
-def _cache_key(req: AskRequest) -> str:
+def _cache_key(req: AskRequest, scope: AccessScope | None = None) -> str:
     payload = {
+        # Identity is part of the key, not an afterthought: two users asking
+        # the same question have different corpora, so a shared entry would
+        # serve one of them the other's answer and citations.
+        "identity": None if scope is None else [scope.company_id, scope.user_id,
+                                                sorted(scope.department_ids)],
         "question": req.question,
         "history": [(t.role, t.content) for t in req.history],
         "top_k": req.top_k,
@@ -123,21 +162,24 @@ def _safe_filename(name: str) -> str:
 
 
 @app.get("/health")
-def health() -> dict[str, Any]:
+def health(scope: AccessScope | None = Depends(current_scope)) -> dict[str, Any]:
     s = get_settings()
+    # Scoped: an unscoped count tells a user how much exists that they cannot
+    # see, which is a small leak but a leak.
     return {"status": "ok", "project": s.project_name, "llm_provider": s.llm_provider,
-            "chunks_indexed": get_store().count(),
+            "chunks_indexed": get_store().count(access=scope),
             "brand_accent": s.extra.get("brand_accent"),
             "brand_description": s.extra.get("brand_description"),
             "show_source_link": bool(s.extra.get("show_source_link", True))}
 
 
 @app.post("/ask")
-def ask(req: AskRequest, pipeline: RAGPipeline = Depends(get_pipeline)) -> dict[str, Any]:
-    if pipeline.store.count() == 0:
+def ask(req: AskRequest, pipeline: RAGPipeline = Depends(get_pipeline),
+        scope: AccessScope | None = Depends(current_scope)) -> dict[str, Any]:
+    if pipeline.store.count(access=scope) == 0:
         raise HTTPException(409, "index is empty -- run ingestion first (POST /ingest)")
 
-    key = _cache_key(req)
+    key = _cache_key(req, scope)
     cached = _ANSWER_CACHE.get(key)
     if cached is not None:
         _ANSWER_CACHE.move_to_end(key)
@@ -145,7 +187,7 @@ def ask(req: AskRequest, pipeline: RAGPipeline = Depends(get_pipeline)) -> dict[
 
     history = [Message(t.role, t.content) for t in req.history]
     result = pipeline.ask(req.question, history=history or None,
-                          where=req.filters, top_k=req.top_k)
+                          where=req.filters, top_k=req.top_k, access=scope)
     body = result.as_dict()
 
     _ANSWER_CACHE[key] = body
@@ -156,11 +198,12 @@ def ask(req: AskRequest, pipeline: RAGPipeline = Depends(get_pipeline)) -> dict[
 
 
 @app.post("/ingest", dependencies=[Depends(require_admin)])
-def ingest(req: IngestRequest, pipeline: RAGPipeline = Depends(get_pipeline)) -> dict[str, Any]:
+def ingest(req: IngestRequest, pipeline: RAGPipeline = Depends(get_pipeline),
+           scope: AccessScope | None = Depends(current_scope)) -> dict[str, Any]:
     """Ingest a path already on the server -- a mounted volume, an S3 sync,
     a scheduled export. Auth-gated: see require_admin."""
     try:
-        report = pipeline.ingest(req.path)
+        report = pipeline.ingest(req.path, acl=_acl_for_upload(scope))
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     get_store.cache_clear()
@@ -168,9 +211,23 @@ def ingest(req: IngestRequest, pipeline: RAGPipeline = Depends(get_pipeline)) ->
     return report.as_dict()
 
 
+def _acl_for_upload(scope: AccessScope | None) -> DocumentACL | None:
+    """An upload belongs to whoever sent it, and starts private.
+
+    Nothing becomes department-visible by being uploaded -- that takes a
+    manager's approval, which is the point of the queue. Without this stamp a
+    chunk carries no owner and no company, so it matches nobody's scope and is
+    invisible even to the person who just uploaded it.
+    """
+    if scope is None:
+        return None
+    return DocumentACL(company_id=scope.company_id, owner_id=scope.user_id)
+
+
 @app.post("/upload", dependencies=[Depends(require_admin)])
 async def upload(files: list[UploadFile] = File(...),
-                  pipeline: RAGPipeline = Depends(get_pipeline)) -> dict[str, Any]:
+                  pipeline: RAGPipeline = Depends(get_pipeline),
+                  scope: AccessScope | None = Depends(current_scope)) -> dict[str, Any]:
     """Accept files directly, for a demo corpus with no server filesystem
     access. Auth-gated -- this writes to disk and triggers embedding calls,
     neither of which a public client-facing deployment should hand out for free.
@@ -200,7 +257,7 @@ async def upload(files: list[UploadFile] = File(...),
         saved.append(dest.name)
 
     try:
-        report = pipeline.ingest(upload_dir)
+        report = pipeline.ingest(upload_dir, acl=_acl_for_upload(scope))
     except RuntimeError as exc:  # e.g. a scanned .pdf that OCR'd to no text
         raise HTTPException(422, str(exc)) from exc
     get_store.cache_clear()
@@ -209,7 +266,7 @@ async def upload(files: list[UploadFile] = File(...),
 
 
 @app.get("/source")
-def source(path: str) -> FileResponse:
+def source(path: str, scope: AccessScope | None = Depends(current_scope)) -> FileResponse:
     """Serve an indexed document's original bytes, for in-browser preview.
 
     `path` is client-supplied, so it's never used to build a filesystem path
@@ -219,7 +276,9 @@ def source(path: str) -> FileResponse:
     pipeline, so this can't be tricked into serving a file nobody chose to
     index, regardless of where on disk it actually lives.
     """
-    known_sources = {c.source for c in get_store().all_chunks()}
+    # Scoped: unscoped, this serves any indexed file to anyone who can name
+    # it, and /documents used to hand out the names.
+    known_sources = {c.source for c in get_store().all_chunks(access=scope)}
     if path not in known_sources:
         raise HTTPException(404, "not an indexed document")
     candidate = Path(path)
@@ -303,8 +362,8 @@ def feedback_summary(limit: int = 20) -> dict[str, Any]:
 
 
 @app.get("/documents")
-def documents() -> dict[str, Any]:
-    chunks = get_store().all_chunks()
+def documents(scope: AccessScope | None = Depends(current_scope)) -> dict[str, Any]:
+    chunks = get_store().all_chunks(access=scope)
     by_doc: dict[str, int] = {}
     for c in chunks:
         by_doc[c.source] = by_doc.get(c.source, 0) + 1
