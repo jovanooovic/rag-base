@@ -81,6 +81,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def accept(args: argparse.Namespace) -> int:
+    _guard_baseline_provider(allow_real=args.allow_real_baseline)
     build_system, metrics_factory, load_cases = _resolve_adapter(args.adapter)()
     cases = load_cases(args.suite)
     system = build_system()
@@ -92,6 +93,37 @@ def accept(args: argparse.Namespace) -> int:
     write_baseline(args.baseline, scorecard)
     print(f"baseline written to {args.baseline}")
     return 0
+
+
+def _guard_baseline_provider(*, allow_real: bool) -> None:
+    """Refuse to write a real-provider baseline over the mock-vs-mock one.
+
+    CI runs on llm_provider "mock" and gates every PR against this file, so a
+    baseline captured from a real model turns the next PR into a wall of false
+    regressions -- every mock number sits below the real one. That has already
+    happened here once. CONTRIBUTING documented the rule; nothing enforced it,
+    and `accept` silently uses whatever project.config.json currently says,
+    which during real-model work is exactly the wrong thing.
+
+    This is the enforcement. `--allow-real-baseline` is the deliberate override
+    for a repo whose CI actually runs a real provider.
+    """
+    if allow_real:
+        return
+    try:
+        from app.core.config import Settings
+        provider = Settings.load().llm_provider
+    except Exception:  # pragma: no cover - no config is not this check's problem
+        return
+    if provider != "mock":
+        raise SystemExit(
+            f'refusing to write a baseline captured with llm_provider "{provider}".\n'
+            "eval/baseline.json is the mock-vs-mock reference CI compares every PR "
+            "against; a real-provider baseline makes every subsequent CI run fail with "
+            "regressions that are really just mock-vs-real gaps.\n\n"
+            "Either set llm_provider to \"mock\" in project.config.json first, or pass "
+            "--allow-real-baseline if your CI genuinely runs this provider."
+        )
 
 
 def calibrate(args: argparse.Namespace) -> int:
@@ -128,6 +160,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_accept.add_argument("--label", default="baseline")
     p_accept.add_argument("--concurrency", type=int, default=4)
     p_accept.add_argument("--baseline", required=True)
+    p_accept.add_argument("--allow-real-baseline", action="store_true",
+                          help="write the baseline even though llm_provider is not 'mock' "
+                               "(only correct if CI runs that same provider)")
     p_accept.set_defaults(func=accept)
 
     p_cal = sub.add_parser("calibrate", help="judge-vs-human kappa on a labelled subset")

@@ -61,6 +61,13 @@ def test_accept_writes_a_baseline_file(tmp_path, monkeypatch):
     suite = _write_suite(tmp_path)
     baseline = tmp_path / "baseline.json"
 
+    # accept() refuses to overwrite the mock-vs-mock baseline from a real
+    # provider, and Settings.load() would otherwise find the repo's own config.
+    class _MockSettings:
+        llm_provider = "mock"
+    monkeypatch.setattr("app.core.config.Settings.load",
+                        classmethod(lambda cls, *a, **k: _MockSettings()))
+
     argv = ["accept", "--suite", str(suite), "--adapter", "fake_adapter_mod2:build_adapter",
            "--baseline", str(baseline)]
     code = cli.main(argv)
@@ -82,3 +89,45 @@ def test_run_fails_on_regression_when_requested(tmp_path, monkeypatch):
     code = cli.main(argv)
 
     assert code == 1  # always_one=1.0 vs baseline 5.0 is a real regression
+
+
+def test_accept_refuses_a_real_provider_baseline(monkeypatch):
+    """CI gates every PR against eval/baseline.json on the mock provider. A
+    baseline captured from a real model makes every later run look like a wall
+    of regressions -- this repo has already been broken that way once."""
+    import pytest
+
+    from core.eval.cli import _guard_baseline_provider
+
+    class _RealSettings:
+        llm_provider = "openrouter"
+
+    monkeypatch.setattr("app.core.config.Settings.load",
+                        classmethod(lambda cls, *a, **k: _RealSettings()))
+
+    with pytest.raises(SystemExit, match="refusing to write a baseline"):
+        _guard_baseline_provider(allow_real=False)
+
+
+def test_accept_allows_a_real_provider_baseline_when_asked_explicitly(monkeypatch):
+    from core.eval.cli import _guard_baseline_provider
+
+    class _RealSettings:
+        llm_provider = "openrouter"
+
+    monkeypatch.setattr("app.core.config.Settings.load",
+                        classmethod(lambda cls, *a, **k: _RealSettings()))
+
+    _guard_baseline_provider(allow_real=True)  # must not raise
+
+
+def test_accept_permits_the_mock_provider(monkeypatch):
+    from core.eval.cli import _guard_baseline_provider
+
+    class _MockSettings:
+        llm_provider = "mock"
+
+    monkeypatch.setattr("app.core.config.Settings.load",
+                        classmethod(lambda cls, *a, **k: _MockSettings()))
+
+    _guard_baseline_provider(allow_real=False)  # must not raise
