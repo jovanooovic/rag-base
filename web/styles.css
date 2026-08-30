@@ -149,9 +149,19 @@ body {
   transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, transform 100ms ease;
 }
 
+/* Without this, the class's own `display` beats the browser's
+   `[hidden] { display: none }` and a hidden icon button stays on screen. */
+.icon-btn[hidden] { display: none; }
+
 .icon-btn:hover {
   background: var(--icon-chrome-hover);
   color: var(--text);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
 }
 
 .icon-btn:active { transform: scale(0.92); }

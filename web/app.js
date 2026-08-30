@@ -8,6 +8,7 @@ const sendBtn = document.getElementById("send");
 const statusDot = document.getElementById("status-dot");
 const statusText = document.getElementById("status-text");
 const themeToggle = document.getElementById("theme-toggle");
+const newChatBtn = document.getElementById("new-chat");
 const docModal = document.getElementById("doc-modal");
 const docModalBackdrop = document.getElementById("doc-modal-backdrop");
 const docModalClose = document.getElementById("doc-modal-close");
@@ -140,11 +141,34 @@ function scrollToEnd() {
 
 function addUserMessage(text) {
   emptyState.style.display = "none";
+  newChatBtn.hidden = false;
   const node = document.getElementById("tpl-user").content.cloneNode(true);
   node.querySelector(".bubble").textContent = text;
   chat.appendChild(node);
   scrollToEnd();
 }
+
+// ---------- new chat ----------
+// Back to the opening screen, and -- the part that actually matters -- a
+// cleared `history`. Follow-up questions are answered with the previous turns
+// as context, so a visitor who starts a new topic on top of an old thread gets
+// query rewriting that drags the old subject along with it.
+
+function resetChat() {
+  if (busy) return;
+  for (const child of [...chat.children]) {
+    if (child !== emptyState) child.remove();
+  }
+  history.length = 0;
+  emptyState.style.display = "";
+  newChatBtn.hidden = true;
+  input.value = "";
+  input.style.height = "auto";
+  input.focus();
+  chat.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+newChatBtn.addEventListener("click", resetChat);
 
 function addTyping() {
   const node = document.getElementById("tpl-typing").content.cloneNode(true);
@@ -500,6 +524,7 @@ async function ask(question) {
   addUserMessage(question);
   busy = true;
   sendBtn.disabled = true;
+  newChatBtn.disabled = true;
   const typingEl = addTyping();
 
   const startedAt = performance.now();
@@ -524,6 +549,7 @@ async function ask(question) {
       });
       busy = false;
       sendBtn.disabled = false;
+      newChatBtn.disabled = false;
       return;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -550,6 +576,7 @@ async function ask(question) {
   } finally {
     busy = false;
     sendBtn.disabled = false;
+    newChatBtn.disabled = false;
   }
 }
 
