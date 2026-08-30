@@ -75,3 +75,22 @@ def test_store_metadata_filter(store):
     store.upsert([a, b], emb.embed([a.text, b.text]))
     hits = store.search(emb.embed(["policy"])[0], k=10, where={"tenant": "acme"})
     assert [h.chunk.chunk_id for h in hits] == ["a"]
+
+
+def test_sqlite_store_refuses_an_access_scope_instead_of_ignoring_it(store):
+    """Fail closed. SQLiteStore has no per-user visibility, so accepting a
+    scope and returning everything would be the worst outcome available: the
+    caller believes rows are filtered by identity and they are not."""
+    import pytest
+
+    from app.store.access import AccessScope
+
+    scope = AccessScope(company_id="acme", user_id="pera")
+    for call in (
+        lambda: store.search([0.1] * 256, k=5, access=scope),
+        lambda: store.keyword_search("refund", k=5, access=scope),
+        lambda: store.all_chunks(access=scope),
+        lambda: store.count(access=scope),
+    ):
+        with pytest.raises(NotImplementedError, match="pgvector"):
+            call()

@@ -111,3 +111,109 @@ def test_filtered_search_refuses_rather_than_silently_truncating(store, monkeypa
         store.search([1.0, 0, 0, 0], k=10, where={"dept": "finance"})
 
     store.search([1.0, 0, 0, 0], k=10)  # unfiltered is unaffected
+
+
+# ---------------------------------------------------------------- access control
+
+def _acl_chunk(cid, text, *, company, owner, dept=None, scope="private", status="active"):
+    return Chunk(cid, f"doc-{cid}", text, f"{cid}.md", 0, "", {
+        "company_id": company, "owner_id": owner, "department_id": dept,
+        "scope": scope, "status": status,
+    })
+
+
+@pytest.fixture
+def acl_store(store):
+    """Pera in finance, Zika in IT, plus an unrelated company.
+
+    Every document says the same thing, so nothing here can pass by ranking
+    accident -- only the ACL predicate decides what comes back.
+    """
+    text = "Quarterly figures and coverage details."
+    store.upsert([
+        _acl_chunk("pera_private", text, company="acme", owner="pera"),
+        _acl_chunk("finance_shared", text, company="acme", owner="mgr",
+                   dept="finance", scope="department"),
+        _acl_chunk("finance_pending", text, company="acme", owner="ana",
+                   dept="finance", scope="department", status="pending_approval"),
+        _acl_chunk("it_shared", text, company="acme", owner="zika",
+                   dept="it", scope="department"),
+        _acl_chunk("other_company", text, company="globex", owner="someone",
+                   dept="finance", scope="department"),
+    ], [[1.0, 0, 0, 0]] * 5)
+    return store
+
+
+def _seen(hits):
+    return {h.chunk.chunk_id for h in hits}
+
+
+def test_a_member_sees_own_private_and_approved_department_documents(acl_store):
+    from app.store.access import AccessScope
+    pera = AccessScope(company_id="acme", user_id="pera", department_ids=("finance",))
+
+    assert _seen(acl_store.search([1.0, 0, 0, 0], k=10, access=pera)) == {
+        "pera_private", "finance_shared"}
+
+
+def test_a_document_awaiting_approval_is_not_shared_yet(acl_store):
+    """The queue exists so a manager decides; visible-while-pending would make
+    the queue decorative."""
+    from app.store.access import AccessScope
+    colleague = AccessScope(company_id="acme", user_id="pera", department_ids=("finance",))
+
+    assert "finance_pending" not in _seen(acl_store.search([1.0, 0, 0, 0], k=10, access=colleague))
+
+
+def test_the_submitter_still_sees_their_own_pending_document(acl_store):
+    """Ownership outranks approval state: submitting a document for review must
+    not make it vanish from the person who wrote it."""
+    from app.store.access import AccessScope
+    ana = AccessScope(company_id="acme", user_id="ana", department_ids=("finance",))
+
+    assert "finance_pending" in _seen(acl_store.search([1.0, 0, 0, 0], k=10, access=ana))
+
+
+def test_departments_do_not_see_each_other(acl_store):
+    from app.store.access import AccessScope
+    zika = AccessScope(company_id="acme", user_id="zika", department_ids=("it",))
+
+    seen = _seen(acl_store.search([1.0, 0, 0, 0], k=10, access=zika))
+    assert seen == {"it_shared"}
+    assert "pera_private" not in seen and "finance_shared" not in seen
+
+
+def test_the_company_boundary_holds(acl_store):
+    from app.store.access import AccessScope
+    outsider = AccessScope(company_id="globex", user_id="someone",
+                           department_ids=("finance",))
+
+    assert _seen(acl_store.search([1.0, 0, 0, 0], k=10, access=outsider)) == {"other_company"}
+
+
+def test_the_keyword_leg_is_scoped_too(acl_store):
+    """Both retrieval legs run on every query; scoping one is scoping neither."""
+    from app.store.access import AccessScope
+    pera = AccessScope(company_id="acme", user_id="pera", department_ids=("finance",))
+
+    assert _seen(acl_store.keyword_search("quarterly", k=10, access=pera)) == {
+        "pera_private", "finance_shared"}
+
+
+def test_count_and_listing_are_scoped(acl_store):
+    """/documents and the index-size badge read these; unscoped, they leak the
+    existence and filenames of documents the user cannot open."""
+    from app.store.access import AccessScope
+    pera = AccessScope(company_id="acme", user_id="pera", department_ids=("finance",))
+
+    assert acl_store.count() == 5           # unscoped: the whole table
+    assert acl_store.count(access=pera) == 2
+    assert {c.chunk_id for c in acl_store.all_chunks(access=pera)} == {
+        "pera_private", "finance_shared"}
+
+
+def test_a_user_in_no_department_sees_only_their_own(acl_store):
+    from app.store.access import AccessScope
+    newcomer = AccessScope(company_id="acme", user_id="pera")
+
+    assert _seen(acl_store.search([1.0, 0, 0, 0], k=10, access=newcomer)) == {"pera_private"}

@@ -92,7 +92,24 @@ class SQLiteStore:
                      ordinal=r["ordinal"], heading_path=r["heading_path"],
                      metadata=json.loads(r["metadata"]))
 
-    def search(self, vector, k: int = 10, where=None) -> list[ScoredChunk]:
+    def _reject_access(self, access) -> None:
+        """Fail closed.
+
+        SQLiteStore is the single-tenant backend: one client, one corpus, no
+        per-user visibility. If a caller hands it an AccessScope, the caller
+        believes rows are being filtered by identity and they are not. Silently
+        ignoring it would turn "Pera cannot see Zika's specs" into a comment in
+        someone's design doc, so refuse instead and name the fix.
+        """
+        if access is not None:
+            raise NotImplementedError(
+                "SQLiteStore cannot enforce per-user access control. Set "
+                "store_backend to 'pgvector' for the multi-user tier -- see "
+                "app/store/access.py."
+            )
+
+    def search(self, vector, k: int = 10, where=None, access=None) -> list[ScoredChunk]:
+        self._reject_access(access)
         q = list(vector)
         qn = math.sqrt(sum(x * x for x in q)) or 1.0
         scored: list[ScoredChunk] = []
@@ -105,7 +122,8 @@ class SQLiteStore:
         scored.sort(key=lambda s: s.score, reverse=True)
         return scored[:k]
 
-    def keyword_search(self, query: str, k: int = 10, where=None) -> list[ScoredChunk]:
+    def keyword_search(self, query: str, k: int = 10, where=None, access=None) -> list[ScoredChunk]:
+        self._reject_access(access)
         chunks = [self._to_chunk(r) for r in self._rows(where)]
         if not chunks:
             return []
@@ -119,10 +137,12 @@ class SQLiteStore:
         ranked = sorted(zip(chunks, scores, strict=True), key=lambda t: t[1], reverse=True)[:k]
         return [ScoredChunk(c, s, {"bm25": s}) for c, s in ranked if s > 0]
 
-    def all_chunks(self) -> list[Chunk]:
+    def all_chunks(self, access=None) -> list[Chunk]:
+        self._reject_access(access)
         return [self._to_chunk(r) for r in self._rows()]
 
-    def count(self) -> int:
+    def count(self, access=None) -> int:
+        self._reject_access(access)
         return int(self.conn.execute("SELECT COUNT(*) AS n FROM chunks").fetchone()["n"])
 
     def close(self) -> None:
