@@ -24,7 +24,9 @@ def build_store(settings: Settings):
         return SQLiteStore(Path(settings.data_dir) / "index.db")
     if backend == "pgvector":
         from .store.pgvector_store import PgVectorStore
-        return PgVectorStore(settings.extra["postgres_dsn"], dim=settings.embedding_dim)
+        # Settings.validate() rejects pgvector without a DSN, so this is a
+        # belt-and-braces default rather than the real error path.
+        return PgVectorStore(settings.extra.get("postgres_dsn", ""), dim=settings.embedding_dim)
     raise ValueError(f"unknown store_backend {backend!r}")
 
 
@@ -37,26 +39,33 @@ class RAGResult:
     refused: bool = False
     refusal_reason: str = ""
     needs_clarification: bool = False
+    redact_pii: bool = False
     trace: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
+        # Redaction has to happen here, not only on the answer text. The same
+        # response carries verbatim source excerpts for the citation popovers
+        # and the retrieval panel, so redacting the answer alone left the
+        # original PII one field further down the same JSON -- and the excerpt
+        # is drawn from the document, which is where the PII actually lives.
+        clean = redact if self.redact_pii else (lambda s: s)
         return {
-            "question": self.question,
+            "question": clean(self.question),
             "answer": self.answer.text,
             "answered": self.answer.answered,
             "refused": self.refused,
             "refusal_reason": self.refusal_reason,
             "needs_clarification": self.needs_clarification,
             "unsupported": self.answer.unsupported,
-            "queries": self.queries,
+            "queries": [clean(q) for q in self.queries],
             "citations": [
                 {"n": c.number, "source": c.source, "heading": c.heading_path,
-                 "chunk_id": c.chunk_id, "excerpt": c.text[:300]}
+                 "chunk_id": c.chunk_id, "excerpt": clean(c.text[:300])}
                 for c in self.answer.citations
             ],
             "retrieved": [
                 {"chunk_id": h.chunk.chunk_id, "source": h.chunk.source,
-                 "heading": h.chunk.heading_path, "excerpt": h.chunk.text[:300],
+                 "heading": h.chunk.heading_path, "excerpt": clean(h.chunk.text[:300]),
                  "score": round(h.score, 4), "signals": {k: round(v, 4) for k, v in h.signals.items()}}
                 for h in self.hits
             ],
@@ -129,12 +138,14 @@ class RAGPipeline:
                 require_citations=bool(ex.get("require_citations", True)),
             )
             final = gate.answer or answer
-            if ex.get("redact_pii", False):
+            redact_pii = bool(ex.get("redact_pii", False))
+            if redact_pii:
                 final.text = redact(final.text)
 
             result = RAGResult(question=question, answer=final, hits=hits, queries=queries,
                                refused=not gate.ok, refusal_reason=gate.reason,
                                needs_clarification=final.needs_clarification,
+                               redact_pii=redact_pii,
                                trace={"run_id": self.trace.run_id, **self.trace.counters})
         self.trace.save()
         return result

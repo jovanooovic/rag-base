@@ -1,6 +1,7 @@
 import json
 
 from app.core.providers import MockLLM
+from app.pipeline import RAGPipeline
 
 
 def test_ingestion_is_idempotent_and_skips_unchanged_chunks(pipeline):
@@ -57,3 +58,48 @@ def test_bootstrap_from_corpus_drafts_reviewable_cases(pipeline):
     rows = list(bootstrap_from_corpus(chunks, pipeline.llm, limit=2))
     assert len(rows) == 2
     assert all(r["type"] == "factoid" and r["gold_doc_ids"] for r in rows)
+
+
+def test_redaction_covers_excerpts_not_just_the_answer_text(settings, store):
+    """The response ships verbatim source excerpts for the citation popovers, so
+    redacting only answer text left the PII one field further down the same JSON
+    -- and the excerpt is drawn from the document, which is where it lives."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    corpus = _Path(settings.data_dir) / "pii"
+    corpus.mkdir(parents=True, exist_ok=True)
+    (corpus / "contacts.md").write_text(
+        "# Escalation contacts\n\nFor billing disputes email ana.petrovic@acme-example.com "
+        "or call 060 123 4567 with your account number.\n", encoding="utf-8")
+
+    settings.extra["redact_pii"] = True
+    p = RAGPipeline(settings, store=store)
+    p.ingest(corpus)
+
+    result = p.ask("who do I email about billing disputes").as_dict()
+    payload = _json.dumps(result)
+
+    # Guard against a vacuous pass: if retrieval returned nothing there would be
+    # no excerpt to leak and the assertions below would hold trivially.
+    assert result["retrieved"], "no excerpt in the response -- test proves nothing"
+    assert "ana.petrovic@acme-example.com" not in payload
+    assert "<EMAIL>" in payload
+
+
+def test_redaction_stays_off_by_default(settings, store):
+    import json as _json
+    from pathlib import Path as _Path
+
+    corpus = _Path(settings.data_dir) / "pii_off"
+    corpus.mkdir(parents=True, exist_ok=True)
+    (corpus / "contacts.md").write_text(
+        "# Escalation contacts\n\nEmail ana.petrovic@acme-example.com for billing disputes.\n",
+        encoding="utf-8")
+
+    p = RAGPipeline(settings, store=store)
+    p.ingest(corpus)
+
+    payload = _json.dumps(p.ask("who do I email about billing disputes").as_dict())
+
+    assert "ana.petrovic@acme-example.com" in payload
