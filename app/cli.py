@@ -30,8 +30,20 @@ def main(argv=None) -> int:
     p_boot.add_argument("--out", default="eval/golden.generated.jsonl")
     p_boot.add_argument("--limit", type=int, default=25)
 
+    p_fb = sub.add_parser("feedback-export",
+                          help="turn thumbs-down feedback into draft golden cases")
+    p_fb.add_argument("--out", default="eval/golden.from-feedback.jsonl")
+    p_fb.add_argument("--limit", type=int, default=100)
+
     args = ap.parse_args(argv)
     settings = Settings.load(args.config)
+
+    # Before the pipeline is built: this reads a local JSONL file and nothing
+    # else, and constructing RAGPipeline would demand a provider API key to do
+    # it -- which would make triaging feedback impossible offline.
+    if args.cmd == "feedback-export":
+        return _feedback_export(settings, out=Path(args.out), limit=args.limit)
+
     pipeline = RAGPipeline(settings)
 
     if args.cmd == "ingest":
@@ -82,6 +94,57 @@ def main(argv=None) -> int:
         return 0
 
     return 1
+
+
+def _feedback_export(settings, *, out: Path, limit: int) -> int:
+    """Turn thumbs-down feedback into draft golden cases.
+
+    Drafts, not cases. Every row lands with gold_answer empty and a note saying
+    it needs review, in the same shape bootstrap-eval produces -- because a
+    reader clicking thumbs-down tells you they were unhappy, not what the right
+    answer was. Promoting these unreviewed would let user disappointment quietly
+    redefine correctness, which is how a golden set stops meaning anything.
+
+    Deduplicated by question: the same broken answer found by ten people is one
+    case to fix, not ten.
+    """
+    from .api import read_feedback
+
+    rows = [r for r in read_feedback(settings) if r.get("verdict") == "down"]
+    if not rows:
+        print("no negative feedback recorded yet")
+        return 0
+
+    seen: dict[str, dict] = {}
+    for r in rows:
+        q = (r.get("question") or "").strip()
+        if q and q not in seen:
+            seen[q] = r
+
+    drafts = []
+    for i, (question, row) in enumerate(list(seen.items())[:limit], start=1):
+        note = "from user feedback, needs review"
+        if row.get("note"):
+            note += f" -- reader said: {row['note']}"
+        drafts.append({
+            "id": f"fb-{i:02d}",
+            "question": question,
+            "gold_answer": "",
+            "gold_doc_ids": [],
+            "gold_spans": [],
+            "type": "factoid",
+            "difficulty": "unknown",
+            "notes": note,
+        })
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(json.dumps(d, ensure_ascii=False) for d in drafts) + "\n",
+                   encoding="utf-8")
+    print(f"wrote {len(drafts)} draft cases to {out} "
+          f"(from {len(rows)} thumbs-down, {len(seen)} distinct questions)")
+    print("These are a scaffold. Fill in gold_answer and gold_doc_ids, and have someone "
+          "who knows the domain confirm them, before any of it reaches a scorecard.")
+    return 0
 
 
 def _print(result) -> None:

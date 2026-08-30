@@ -265,6 +265,7 @@ Decisions worth defending in a client call:
 | Per-run cost budget | Refuses past `max_cost_usd_per_run`. Cheap insurance against the overnight-loop invoice. |
 | `min_top_score` gates a normalised confidence | Every scorer publishes `signals["confidence"]` on a 0–1 scale, and the refusal floor is defined on that rather than on a raw score whose range depends on which retrieval path ran. Config rejects a floor outside 0–1, and rejects one set without a reranker at all. |
 | Unknown config keys are rejected | `redact_pii2: true` used to parse fine and mean "redaction off". `Settings.validate()` now refuses unknown keys and suggests the nearest real one. |
+| Reader feedback becomes draft eval cases | A thumbs-down in the console appends to `data/feedback.jsonl`; `python -m app.cli feedback-export` turns the negatives into golden-set **drafts** with `gold_answer` empty and "needs review" on every row. A reader tells you they were unhappy, not what the right answer was — promoting these unreviewed would let disappointment quietly redefine correctness. |
 | Reranker batched in one call | `LLMReranker`'s batch size matches `fetch_k` instead of splitting into two sequential round trips for no quality gain — measured as roughly half of total `/ask` latency before this, on a live OpenRouter run. |
 | In-process answer cache | Keyed on question + history + filters, cleared on ingest. A repeated question — a demo re-run, two visitors clicking the same suggestion — costs one retrieve+rerank+generate the first time and nothing after: no LLM call, no spend, sub-second response. |
 | No LangChain | Nothing here is hard enough to justify the abstraction, and provider changes stay in one 400-line file. |
@@ -387,6 +388,17 @@ evidence is signalling something no benchmark table can.
   both `.html` and `.md`. But a `.docx` can hide an instruction as white-on-white text
   or with Word's own hidden-text attribute, and `python-docx` reads it as ordinary
   paragraph text. Same for a spreadsheet cell in a hidden column or sheet.
+- **`POST /feedback` is the only write endpoint with no token, and it has a bound, not
+  a rate limit.** It has to be open — the value is that whoever spotted the wrong
+  answer can say so, and they will not have an admin token. The file is capped at 5MB
+  and every field is length-limited, so it cannot quietly fill a disk, but a determined
+  script can still burn through that cap and then feedback stops being recorded until
+  someone rotates the file. Real rate limiting (per-IP, or a proxy in front) is a
+  prerequisite for putting this on the open internet, and it is not in this repo.
+- **Feedback is a triage queue, not a metric.** Nothing counts thumbs-down as a score,
+  and it should not: the people who bother to click are not a random sample, and they
+  are reporting dissatisfaction rather than a graded verdict. It is a way to find cases
+  worth writing, which is different from measuring quality.
 - **`min_top_score` is coarser in practice than 0–1 suggests.** The floor is honest
   now — it reads a normalised confidence rather than a raw score that meant two
   different things depending on whether the reranker ran — but with `gpt-4o-mini` the
@@ -459,8 +471,8 @@ app/store/        SQLiteStore (default), PgVectorStore (scale), shared interface
 app/retrieve/     BM25, RRF hybrid, LLM + cross-encoder reranker, multi-turn query rewriting
 app/answer/       cited generation, fenced untrusted sources, refusal guardrails, PII redaction
 app/evaluation/   the RAG-specific adapter into core/eval, and the golden-set bootstrapper
-app/api.py        FastAPI: /ask /ingest /upload /documents /source /health, serves web/ at "/"
-app/cli.py        ingest, ask, chat, stats, bootstrap-eval
+app/api.py        FastAPI: /ask /ingest /upload /feedback /documents /source /health, serves web/ at "/"
+app/cli.py        ingest, ask, chat, stats, bootstrap-eval, feedback-export
 web/              chat console + admin.html upload panel (vanilla JS, no build step)
 eval/             golden set, calibration template, ablations, HTML/PNG report tooling
 intake/           the client questionnaire

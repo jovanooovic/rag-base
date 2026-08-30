@@ -101,7 +101,19 @@
         <div class="best-match"></div>
       </details>
     </div>
-    <div class="meta"></div>
+    <div class="meta-row">
+      <div class="meta"></div>
+      <div class="vote" role="group" aria-label="Was this answer useful?">
+        <button class="vote-btn" data-verdict="up" title="This answered my question"
+          aria-label="Helpful">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 14V6.5l3.2-4.2a1.2 1.2 0 0 1 2.1 1l-.8 2.9h3.3a1.4 1.4 0 0 1 1.35 1.75l-1.2 4.6A1.8 1.8 0 0 1 11.2 14H5zM5 14H2.6V6.9H5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="vote-btn" data-verdict="down" title="This was wrong or unhelpful"
+          aria-label="Not helpful">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M11 2v7.5l-3.2 4.2a1.2 1.2 0 0 1-2.1-1l.8-2.9H3.2A1.4 1.4 0 0 1 1.85 8.05l1.2-4.6A1.8 1.8 0 0 1 4.8 2H11zm0 0h2.4v7.1H11" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 

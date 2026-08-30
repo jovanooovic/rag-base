@@ -6,6 +6,7 @@ import os
 import re
 import uuid
 from collections import OrderedDict
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .answer.guardrails import redact
 from .core.config import Settings
 from .core.providers import Message
 from .core.trace import Trace
@@ -26,6 +28,14 @@ app = FastAPI(title="RAG base", version="0.1.0",
 
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024   # 15 MB per file
 MAX_FILES_PER_UPLOAD = 10
+
+# POST /feedback is the only write endpoint that is not admin-gated -- it has
+# to be, since the whole point is that a reader can disagree without holding a
+# token. That makes an unbounded append-only file a disk-fill DoS on anything
+# publicly reachable, so the file is capped and further writes are refused
+# loudly rather than silently filling the volume. This is a bound, not rate
+# limiting; see Known Limitations before exposing this to the open internet.
+FEEDBACK_MAX_BYTES = 5 * 1024 * 1024
 
 
 @lru_cache(maxsize=1)
@@ -60,6 +70,15 @@ class AskRequest(BaseModel):
 
 class IngestRequest(BaseModel):
     path: str
+
+
+class FeedbackRequest(BaseModel):
+    """A reader disagreeing with an answer, which is the only signal that
+    reliably finds the failures a golden set was never written to cover."""
+    run_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    question: str = Field(min_length=1, max_length=4000)
+    verdict: str = Field(pattern="^(up|down)$")
+    note: str | None = Field(default=None, max_length=2000)
 
 
 # In-process answer cache. A repeated question -- the same suggestion chip
@@ -207,6 +226,80 @@ def source(path: str) -> FileResponse:
     if not candidate.is_file():
         raise HTTPException(404, "file not found on disk")
     return FileResponse(candidate)
+
+
+def _feedback_path(settings: Settings) -> Path:
+    return Path(settings.data_dir) / "feedback.jsonl"
+
+
+@app.post("/feedback")
+def feedback(req: FeedbackRequest) -> dict[str, Any]:
+    """Record a reader's verdict on an answer.
+
+    Deliberately not admin-gated: the value of this endpoint is that the person
+    who spotted the wrong answer can say so, and they will not have a token.
+    That openness is also its risk, hence the size cap and the field limits on
+    FeedbackRequest.
+
+    `note` is free text a human typed about a real answer, which is exactly
+    where a name or an order number ends up -- so it goes through the same
+    redaction as the answer itself when redact_pii is on.
+    """
+    settings = get_settings()
+    path = _feedback_path(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if path.exists() and path.stat().st_size >= FEEDBACK_MAX_BYTES:
+        raise HTTPException(
+            507, f"feedback log is full ({FEEDBACK_MAX_BYTES // (1024 * 1024)}MB). "
+                 "Export and rotate it: python -m app.cli feedback-export")
+
+    clean = redact if settings.extra.get("redact_pii", False) else (lambda s: s)
+    row = {
+        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "run_id": req.run_id,
+        "verdict": req.verdict,
+        "question": clean(req.question),
+        "note": clean(req.note) if req.note else None,
+    }
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return {"recorded": True}
+
+
+def read_feedback(settings: Settings) -> list[dict[str, Any]]:
+    """Rows from the feedback log, skipping any that are unreadable.
+
+    A corrupt line -- a half-written row from a killed process, say -- must not
+    take down the admin panel that exists to read this file.
+    """
+    path = _feedback_path(settings)
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return rows
+
+
+@app.get("/feedback", dependencies=[Depends(require_admin)])
+def feedback_summary(limit: int = 20) -> dict[str, Any]:
+    """Counts plus the most recent negatives -- admin-gated, because it is a
+    log of what real users asked, which is client data."""
+    rows = read_feedback(get_settings())
+    down = [r for r in rows if r.get("verdict") == "down"]
+    return {
+        "total": len(rows),
+        "up": sum(1 for r in rows if r.get("verdict") == "up"),
+        "down": len(down),
+        "recent_negative": list(reversed(down[-max(0, min(limit, 200)):])),
+    }
 
 
 @app.get("/documents")

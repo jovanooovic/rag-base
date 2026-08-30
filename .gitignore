@@ -6,6 +6,10 @@ venv/
 data/*.db
 data/ingest_state.json
 data/uploads/
+# Real questions real people asked, plus whatever they typed in a note.
+# Client data by definition -- never commit it, in this repo or a fork.
+data/feedback.jsonl
+eval/golden.from-feedback.jsonl
 traces/
 eval/report/
 eval/golden.generated.jsonl

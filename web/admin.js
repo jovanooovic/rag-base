@@ -205,3 +205,42 @@ async function loadDocuments() {
   }
 }
 loadDocuments();
+
+// ---------- reader feedback ----------
+
+const feedbackTable = document.getElementById("feedback-table");
+
+async function loadFeedback() {
+  if (!feedbackTable) return;
+  try {
+    const res = await fetch("/feedback", { headers: { "X-Admin-Token": getToken() } });
+    if (res.status === 401) {
+      feedbackTable.innerHTML = `<p class="admin-sub">Save the admin token above to read feedback.</p>`;
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+
+    if (!body.total) {
+      feedbackTable.innerHTML = `<p class="admin-sub">No feedback recorded yet.</p>`;
+      return;
+    }
+    const rows = (body.recent_negative || [])
+      .map((r) => `<tr><td>${escapeHtml(r.question || "")}</td>
+        <td>${escapeHtml(r.note || "—")}</td>
+        <td>${escapeHtml((r.ts || "").replace("T", " ").replace("+00:00", ""))}</td></tr>`)
+      .join("");
+    feedbackTable.innerHTML = `
+      <p class="admin-sub" style="margin-bottom:10px">
+        ${body.total} total &middot; ${body.up} helpful &middot; ${body.down} not helpful
+      </p>
+      ${rows ? `<table><tbody>${rows}</tbody></table>` : `<p class="admin-sub">No negatives yet.</p>`}`;
+  } catch {
+    feedbackTable.innerHTML = `<p class="admin-sub">Could not reach the API.</p>`;
+  }
+}
+loadFeedback();
+
+// The panel is token-gated, so re-read it when a token is saved rather than
+// leaving the operator looking at the "save the token" message.
+tokenSave.addEventListener("click", loadFeedback);

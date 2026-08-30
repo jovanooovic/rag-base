@@ -472,10 +472,60 @@ body {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-faint);
-  margin-top: 6px;
   padding: 0 4px;
   font-variant-numeric: tabular-nums;
 }
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+/* Quiet until hovered: the vote is worth offering on every answer, but it is
+   not what a reader came to look at. */
+.vote {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.msg--assistant:hover .vote,
+.vote:focus-within,
+.vote[data-state] { opacity: 1; }
+
+.vote-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.vote-btn:hover { color: var(--text); background: var(--bg-elevated-2); }
+.vote-btn.is-chosen { color: var(--accent); }
+.vote-btn:disabled { cursor: default; }
+.vote-btn:disabled:not(.is-chosen) { opacity: 0.3; }
+
+.vote[data-state]::after {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  align-self: center;
+  margin-left: 4px;
+}
+
+.vote[data-state="thanks"]::after { content: "thanks"; }
+.vote[data-state="failed"]::after { content: "not recorded"; color: var(--warn); }
 
 /* ---------- typing indicator ---------- */
 

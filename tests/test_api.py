@@ -194,3 +194,90 @@ def test_source_rejects_traversal_attempts(client):
 
     resp = c.get("/source", params={"path": "../../../../etc/passwd"})
     assert resp.status_code == 404
+
+
+def test_feedback_records_a_verdict(client):
+    c, _ = client
+    resp = c.post("/feedback", json={"run_id": "abc123", "question": "how long is the warranty",
+                                     "verdict": "down", "note": "wrong, it is 24 months"})
+    assert resp.status_code == 200
+
+    from app import api
+    rows = api.read_feedback(api.get_settings())
+    assert len(rows) == 1
+    assert rows[0]["verdict"] == "down"
+    assert rows[0]["note"] == "wrong, it is 24 months"
+    assert rows[0]["ts"]
+
+
+def test_feedback_rejects_a_bogus_verdict(client):
+    c, _ = client
+    assert c.post("/feedback", json={"run_id": "a", "question": "q",
+                                     "verdict": "maybe"}).status_code == 422
+
+
+def test_feedback_rejects_an_oversized_note(client):
+    c, _ = client
+    resp = c.post("/feedback", json={"run_id": "a", "question": "q", "verdict": "down",
+                                     "note": "x" * 5000})
+    assert resp.status_code == 422
+
+
+def test_feedback_refuses_once_the_log_is_full(client, monkeypatch):
+    """POST /feedback is the one write endpoint with no token, so an unbounded
+    append-only file is a disk-fill DoS on anything publicly reachable."""
+    from app import api
+    monkeypatch.setattr(api, "FEEDBACK_MAX_BYTES", 50)
+    c, _ = client
+
+    for _ in range(5):
+        last = c.post("/feedback", json={"run_id": "a", "question": "a longer question here",
+                                         "verdict": "down"})
+    assert last.status_code == 507
+
+
+def test_feedback_redacts_pii_in_the_note_when_configured(client, monkeypatch):
+    """The note is free text a human typed about a real answer -- which is
+    exactly where a name, an email or an order number turns up."""
+    from app import api
+    api.get_settings().extra["redact_pii"] = True
+    try:
+        c, _ = client
+        c.post("/feedback", json={"run_id": "a", "question": "who do I email",
+                                  "verdict": "down", "note": "should say ana@acme-example.com"})
+        rows = api.read_feedback(api.get_settings())
+        assert "ana@acme-example.com" not in rows[-1]["note"]
+        assert "<EMAIL>" in rows[-1]["note"]
+    finally:
+        api.get_settings().extra.pop("redact_pii", None)
+
+
+def test_feedback_summary_is_admin_gated(client, monkeypatch):
+    monkeypatch.setenv("APP_ADMIN_TOKEN", "secret123")
+    c, _ = client
+    assert c.get("/feedback").status_code == 401
+    assert c.get("/feedback", headers={"X-Admin-Token": "secret123"}).status_code == 200
+
+
+def test_feedback_summary_counts_and_returns_recent_negatives(client):
+    c, _ = client
+    c.post("/feedback", json={"run_id": "a", "question": "q1", "verdict": "up"})
+    c.post("/feedback", json={"run_id": "b", "question": "q2", "verdict": "down"})
+
+    body = c.get("/feedback").json()
+
+    assert body["total"] == 2 and body["up"] == 1 and body["down"] == 1
+    assert body["recent_negative"][0]["question"] == "q2"
+
+
+def test_read_feedback_skips_a_corrupt_line(client):
+    """A half-written row from a killed process must not take down the admin
+    panel whose whole job is reading this file."""
+    from app import api
+    c, _ = client
+    c.post("/feedback", json={"run_id": "a", "question": "q1", "verdict": "down"})
+    path = api._feedback_path(api.get_settings())
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write('{"truncated": \n')
+
+    assert len(api.read_feedback(api.get_settings())) == 1

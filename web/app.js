@@ -416,9 +416,54 @@ function addAssistantMessage(result) {
   chat.appendChild(node);
   const msgEl = chat.lastElementChild;
   metaEl.textContent = formatMeta(result.trace, citations.length);
+  wireVote(msgEl, result);
   scrollToEnd();
   const duration = revealWords(answerEl, result.answer);
   setTimeout(scrollToEnd, Math.min(duration, 300));
+}
+
+// ---------- feedback ----------
+// A reader disagreeing is the only signal that finds failures the golden set
+// was never written to cover. Fire-and-forget on purpose: a failed POST must
+// never interrupt someone reading an answer.
+
+function wireVote(msgEl, result) {
+  const vote = msgEl.querySelector(".vote");
+  if (!vote) return;
+  const runId = result.trace && result.trace.run_id;
+  if (!runId) {
+    // Nothing to attach the verdict to -- hide the control rather than
+    // collecting votes that cannot be traced back to a run.
+    vote.remove();
+    return;
+  }
+
+  vote.querySelectorAll(".vote-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const verdict = btn.dataset.verdict;
+      let note = null;
+      if (verdict === "down") {
+        note = prompt("What was wrong with this answer? (optional)") || null;
+      }
+      vote.querySelectorAll(".vote-btn").forEach((b) => { b.disabled = true; });
+      btn.classList.add("is-chosen");
+      try {
+        const res = await fetch("/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            run_id: runId,
+            question: result.question || "",
+            verdict,
+            note: note ? note.slice(0, 2000) : null,
+          }),
+        });
+        vote.setAttribute("data-state", res.ok ? "thanks" : "failed");
+      } catch {
+        vote.setAttribute("data-state", "failed");
+      }
+    });
+  });
 }
 
 function addRefusalMessage(result) {
