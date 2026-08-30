@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from typing import Any, Sequence
 
 from ..ingest.chunking import Chunk
@@ -20,15 +21,85 @@ class PgVectorStore:  # pragma: no cover - needs a live Postgres
     differs slightly from SQLiteStore, so re-run the eval suite after switching.
     """
 
-    def __init__(self, dsn: str, *, dim: int = 1536, table: str = "chunks"):
-        import psycopg  # type: ignore
+    def __init__(self, dsn: str, *, dim: int = 1536, table: str = "chunks",
+                 max_size: int = 10):
+        """A pool, not one connection.
+
+        One shared connection cannot carry per-request identity. RLS reads
+        `app.current_user_id`, and on a shared connection request B overwrites
+        it while request A is still running -- measured on this setup: a
+        request made by "pera" executed as "zika". `get_store()` is
+        lru_cached, so that shared connection is exactly what the API had.
+
+        Each request borrows its own connection and sets the identity
+        transaction-locally, so it cannot outlive the request or reach the next
+        borrower.
+        """
+        from psycopg_pool import ConnectionPool  # type: ignore
         self.dim = dim
         self.table = table
-        self.conn = psycopg.connect(dsn, autocommit=True)
-        self._iterative_scan = self._enable_iterative_scan()
-        self._migrate()
+        self._iterative_scan = self._probe_iterative_scan(dsn)
+        self._rls_effective = self._probe_rls_effective(dsn)
+        self.pool = ConnectionPool(dsn, min_size=1, max_size=max_size,
+                                   configure=self._configure, open=True)
+        with self.pool.connection() as conn:
+            self._migrate(conn)
 
-    def _enable_iterative_scan(self) -> bool:
+    def _probe_rls_effective(self, dsn: str) -> bool:
+        """Does RLS actually apply to the role we connect as?
+
+        Superusers and roles with BYPASSRLS ignore policies entirely -- FORCE
+        raises the bar to the table owner, not past a superuser. Connect as
+        `postgres` and every policy in _apply_rls is decorative while looking
+        completely correct when inspected, which is the most dangerous shape a
+        security control can take.
+        """
+        import psycopg  # type: ignore
+        with psycopg.connect(dsn, autocommit=True) as probe:
+            row = probe.execute(
+                "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"
+            ).fetchone()
+        return not (row and row[0])
+
+    def _configure(self, conn) -> None:
+        """Runs once per pooled connection, not once per query."""
+        if self._iterative_scan:
+            conn.execute("SET hnsw.iterative_scan = strict_order")
+        conn.commit()
+
+    def _require_effective_rls(self) -> None:
+        if not self._rls_effective:
+            raise RuntimeError(
+                "this connection's role bypasses row-level security (superuser or "
+                "BYPASSRLS), so the access-control policies are not enforced. Connect "
+                "as a dedicated non-superuser role for request traffic -- otherwise "
+                "per-user isolation rests entirely on the application remembering to "
+                "pass a filter, with no backstop."
+            )
+
+    @contextmanager
+    def _session(self, access: AccessScope | None = None):
+        """Borrow a connection, stamped with the caller's identity.
+
+        `set_config(..., true)` is transaction-scoped -- Postgres resets it at
+        commit, so a connection handed back to the pool carries no trace of who
+        last used it. Session-scoped (`false`) would leave the previous user's
+        id in place for whoever borrows it next, which is the bug this whole
+        arrangement exists to avoid.
+        """
+        if access is not None:
+            self._require_effective_rls()
+        with self.pool.connection() as conn:
+            if access is not None:
+                conn.execute("SELECT set_config('app.current_user_id', %s, true)",
+                             (access.user_id,))
+                conn.execute("SELECT set_config('app.current_company_id', %s, true)",
+                             (access.company_id,))
+                conn.execute("SELECT set_config('app.current_department_ids', %s, true)",
+                             (",".join(access.department_ids),))
+            yield conn
+
+    def _probe_iterative_scan(self, dsn: str) -> bool:
         """Make filtered vector search return the k rows it was asked for.
 
         HNSW searches the index first and applies the WHERE clause to whatever
@@ -50,15 +121,16 @@ class PgVectorStore:  # pragma: no cover - needs a live Postgres
         hurt.
         """
         import psycopg  # type: ignore
-        try:
-            self.conn.execute("SET hnsw.iterative_scan = strict_order")
-            return True
-        except psycopg.errors.UndefinedObject:
-            return False
+        with psycopg.connect(dsn, autocommit=True) as probe:
+            try:
+                probe.execute("SET hnsw.iterative_scan = strict_order")
+                return True
+            except psycopg.errors.UndefinedObject:
+                return False
 
-    def _migrate(self) -> None:
-        self.conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        self.conn.execute(f"""
+    def _migrate(self, conn) -> None:
+        conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        conn.execute(f"""
             CREATE TABLE IF NOT EXISTS {self.table} (
                 chunk_id     TEXT PRIMARY KEY,
                 doc_id       TEXT NOT NULL,
@@ -85,19 +157,62 @@ class PgVectorStore:  # pragma: no cover - needs a live Postgres
             ("scope", "TEXT NOT NULL DEFAULT 'private'"),
             ("status", "TEXT NOT NULL DEFAULT 'active'"),
         ):
-            self.conn.execute(f"ALTER TABLE {self.table} ADD COLUMN IF NOT EXISTS {col} {ddl}")
-        self.conn.execute(
+            conn.execute(f"ALTER TABLE {self.table} ADD COLUMN IF NOT EXISTS {col} {ddl}")
+        conn.execute(
             f"CREATE INDEX IF NOT EXISTS {self.table}_tsv_idx ON {self.table} USING GIN (tsv)")
         # Ordered company-first: every access-scoped query filters on it, so it
         # is the most selective prefix available to the planner.
-        self.conn.execute(
+        conn.execute(
             f"CREATE INDEX IF NOT EXISTS {self.table}_acl_idx ON {self.table} "
             f"(company_id, department_id, owner_id)")
         # HNSW over IVFFlat: no training step, better recall at the same latency,
         # and it does not need rebuilding as the corpus grows.
-        self.conn.execute(
+        conn.execute(
             f"CREATE INDEX IF NOT EXISTS {self.table}_emb_idx ON {self.table} "
             f"USING hnsw (embedding vector_cosine_ops)")
+        self._apply_rls(conn)
+
+    def _apply_rls(self, conn) -> None:
+        """The database's own copy of the visibility rule.
+
+        _predicate() is the application's filter and is where correctness comes
+        from. This is the backstop for the realistic failure: identity is set in
+        one place (_session) but the filter has to be passed at every call site,
+        and one of those call sites will eventually be written without it. RLS
+        does not care that the caller forgot.
+
+        FORCE, not just ENABLE: policies are skipped for the table owner
+        otherwise, and the application connects as the owner here, so plain
+        ENABLE would leave this decorative.
+
+        Honest about the hole: when no identity is set at all the policy allows
+        everything, because ingest and migrations legitimately run without a
+        user. So this catches "forgot the filter" -- the bug that scales with
+        the number of call sites -- and not "forgot the identity", which is one
+        place and fails loudly instead. Closing that too needs a separate
+        low-privilege role for request traffic; noted, not done.
+        """
+        conn.execute(f"ALTER TABLE {self.table} ENABLE ROW LEVEL SECURITY")
+        conn.execute(f"ALTER TABLE {self.table} FORCE ROW LEVEL SECURITY")
+        conn.execute(f"DROP POLICY IF EXISTS {self.table}_visibility ON {self.table}")
+        conn.execute(f"""
+            CREATE POLICY {self.table}_visibility ON {self.table}
+            USING (
+                COALESCE(current_setting('app.current_user_id', true), '') = ''
+                OR (
+                    company_id = current_setting('app.current_company_id', true)
+                    AND (
+                        owner_id = current_setting('app.current_user_id', true)
+                        OR (
+                            scope = 'department'
+                            AND status = 'active'
+                            AND department_id = ANY(string_to_array(
+                                COALESCE(current_setting('app.current_department_ids', true), ''),
+                                ','))
+                        )
+                    )
+                )
+            )""")
 
     def upsert(self, chunks: Sequence[Chunk], vectors: Sequence[Sequence[float]]) -> int:
         """ACL fields ride in chunk metadata at ingest and are promoted to
@@ -109,7 +224,7 @@ class PgVectorStore:  # pragma: no cover - needs a live Postgres
                          json.dumps(m), str(list(v)),
                          m.get("company_id"), m.get("owner_id"), m.get("department_id"),
                          m.get("scope", SCOPE_PRIVATE), m.get("status", STATUS_ACTIVE)))
-        with self.conn.cursor() as cur:
+        with self._session() as conn, conn.cursor() as cur:
             cur.executemany(
                 f"INSERT INTO {self.table} "
                 "(chunk_id, doc_id, text, source, ordinal, heading_path, metadata, embedding, "
@@ -145,7 +260,8 @@ class PgVectorStore:  # pragma: no cover - needs a live Postgres
                f"1 - (embedding <=> %s::vector) AS score FROM {self.table} {clause} "
                f"ORDER BY embedding <=> %s::vector LIMIT %s")
         v = str(list(vector))
-        rows = self.conn.execute(sql, [v, *params, v, k]).fetchall()
+        with self._session(access) as conn:
+            rows = conn.execute(sql, [v, *params, v, k]).fetchall()
         return [self._row_to_scored(r, float(r[7]), "vector") for r in rows]
 
     def keyword_search(self, query: str, k: int = 10, where: dict[str, Any] | None = None,
@@ -158,26 +274,40 @@ class PgVectorStore:  # pragma: no cover - needs a live Postgres
                f"{clause} ORDER BY score DESC LIMIT %s")
         # Param order follows the SQL text: ts_rank's query, then metadata
         # filters, then the match clause's query, then the limit.
-        rows = self.conn.execute(sql, [query, *meta_params, query, k]).fetchall()
+        with self._session(access) as conn:
+            rows = conn.execute(sql, [query, *meta_params, query, k]).fetchall()
         return [self._row_to_scored(r, float(r[7]), "bm25") for r in rows]
 
     def all_chunks(self, access: AccessScope | None = None) -> list[Chunk]:
         clause, params = _predicate(None, access)
-        rows = self.conn.execute(
-            f"SELECT chunk_id, doc_id, text, source, ordinal, heading_path, metadata "
-            f"FROM {self.table} {clause}", params
-        ).fetchall()
+        with self._session(access) as conn:
+            rows = conn.execute(
+                f"SELECT chunk_id, doc_id, text, source, ordinal, heading_path, metadata "
+                f"FROM {self.table} {clause}", params
+            ).fetchall()
         return [Chunk(chunk_id=r[0], doc_id=r[1], text=r[2], source=r[3], ordinal=r[4],
                       heading_path=r[5], metadata=r[6] or {}) for r in rows]
 
     def count(self, access: AccessScope | None = None) -> int:
         clause, params = _predicate(None, access)
-        return int(self.conn.execute(
-            f"SELECT COUNT(*) FROM {self.table} {clause}", params).fetchone()[0])
+        with self._session(access) as conn:
+            return int(conn.execute(
+                f"SELECT COUNT(*) FROM {self.table} {clause}", params).fetchone()[0])
 
     def delete_document(self, doc_id: str) -> int:
-        cur = self.conn.execute(f"DELETE FROM {self.table} WHERE doc_id = %s", (doc_id,))
-        return cur.rowcount
+        with self._session() as conn:
+            return conn.execute(
+                f"DELETE FROM {self.table} WHERE doc_id = %s", (doc_id,)).rowcount
+
+    def execute(self, sql: str, params: Sequence[Any] | None = None):
+        """Escape hatch for admin and test SQL. Returns fetched rows, since the
+        cursor is dead once its connection returns to the pool."""
+        with self._session() as conn:
+            cur = conn.execute(sql, params)
+            return cur.fetchall() if cur.description else []
+
+    def close(self) -> None:
+        self.pool.close()
 
 
 def _predicate(where: dict[str, Any] | None,

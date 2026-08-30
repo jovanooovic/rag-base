@@ -19,18 +19,40 @@ import pytest
 
 from app.ingest.chunking import Chunk
 
-DSN = os.environ.get("RAG_TEST_POSTGRES_DSN", "")
-pytestmark = pytest.mark.skipif(not DSN, reason="set RAG_TEST_POSTGRES_DSN to run")
+ADMIN_DSN = os.environ.get("RAG_TEST_POSTGRES_DSN", "")
+pytestmark = pytest.mark.skipif(not ADMIN_DSN, reason="set RAG_TEST_POSTGRES_DSN to run")
+
+# Request traffic must not connect as a superuser: superusers and BYPASSRLS
+# roles ignore policies entirely, so tests run as postgres would report RLS
+# working while it does nothing. This role is what production should look like.
+APP_ROLE, APP_PASSWORD = "rag_test_app", "app"
+
+
+def _app_dsn() -> str:
+    import psycopg
+    with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
+        exists = admin.execute(
+            "SELECT 1 FROM pg_roles WHERE rolname = %s", (APP_ROLE,)).fetchone()
+        if not exists:
+            admin.execute(f"CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_PASSWORD}'")
+        # Owns what it creates, so FORCE ROW LEVEL SECURITY has an owner to
+        # apply to -- but holds no superuser or BYPASSRLS attribute.
+        admin.execute(f"GRANT CREATE, USAGE ON SCHEMA public TO {APP_ROLE}")
+    import re
+    return re.sub(r"//[^@]+@", f"//{APP_ROLE}:{APP_PASSWORD}@", ADMIN_DSN)
+
+
+DSN = _app_dsn() if ADMIN_DSN else ""
 
 
 @pytest.fixture
 def store():
     from app.store.pgvector_store import PgVectorStore
     s = PgVectorStore(DSN, dim=4, table="test_chunks")
-    s.conn.execute("TRUNCATE test_chunks")
+    s.execute("TRUNCATE test_chunks")
     yield s
-    s.conn.execute("DROP TABLE IF EXISTS test_chunks")
-    s.conn.close()
+    s.execute("DROP TABLE IF EXISTS test_chunks")
+    s.close()
 
 
 def _chunk(cid, text, source, dept="finance"):
@@ -84,6 +106,11 @@ def test_filtered_search_returns_k_rows_when_the_index_is_used(store):
 
     Measured before the fix: 1 row returned for k=10.
     """
+    from app.store.pgvector_store import PgVectorStore
+    # A pool of one: `SET enable_seqscan = off` applies to a single connection,
+    # so with a larger pool the search below could borrow a different one and
+    # quietly go back to a sequential scan -- testing nothing.
+    store = PgVectorStore(DSN, dim=4, table="test_chunks", max_size=1)
     random.seed(0)
     n, depts = 4000, 40
     chunks, vectors = [], []
@@ -93,8 +120,8 @@ def test_filtered_search_returns_k_rows_when_the_index_is_used(store):
         vectors.append([random.gauss(0, 1) for _ in range(4)])
     for j in range(0, n, 500):
         store.upsert(chunks[j:j + 500], vectors[j:j + 500])
-    store.conn.execute("ANALYZE test_chunks")
-    store.conn.execute("SET enable_seqscan = off")
+    store.execute("ANALYZE test_chunks")
+    store.execute("SET enable_seqscan = off")
 
     hits = store.search([random.gauss(0, 1) for _ in range(4)], k=10, where={"dept": "dept7"})
 
@@ -217,3 +244,96 @@ def test_a_user_in_no_department_sees_only_their_own(acl_store):
     newcomer = AccessScope(company_id="acme", user_id="pera")
 
     assert _seen(acl_store.search([1.0, 0, 0, 0], k=10, access=newcomer)) == {"pera_private"}
+
+
+def test_concurrent_requests_do_not_inherit_each_others_identity(store):
+    """Regression for a cross-tenant leak.
+
+    Measured on a single shared connection -- which is what get_store()'s
+    lru_cache used to hand out -- a request made by "pera" executed as "zika",
+    because the second request overwrote the session variable while the first
+    was still running. With RLS keyed on that variable, Pera would have been
+    served Zika's documents.
+    """
+    import threading
+    import time
+
+    from app.store.access import AccessScope
+
+    seen: dict[str, str] = {}
+
+    def request(user: str, delay: float) -> None:
+        scope = AccessScope(company_id="acme", user_id=user)
+        with store._session(scope) as conn:
+            time.sleep(delay)   # overlap the two requests inside their sessions
+            seen[user] = conn.execute(
+                "SELECT current_setting('app.current_user_id')").fetchone()[0]
+
+    threads = [threading.Thread(target=request, args=("pera", 0.20)),
+               threading.Thread(target=request, args=("zika", 0.05))]
+    threads[0].start()
+    time.sleep(0.02)
+    threads[1].start()
+    for t in threads:
+        t.join()
+
+    assert seen == {"pera": "pera", "zika": "zika"}
+
+
+def test_identity_does_not_survive_into_the_next_borrower(store):
+    """set_config(..., true) is transaction-scoped, so a connection returned to
+    the pool carries no trace of who last used it. Session-scoped would leave
+    the previous user's id in place for whoever picks it up next."""
+    from app.store.access import AccessScope
+
+    with store._session(AccessScope(company_id="acme", user_id="pera")):
+        pass
+
+    with store._session() as conn:  # no identity: must read as unset, not "pera"
+        assert conn.execute(
+            "SELECT current_setting('app.current_user_id', true)").fetchone()[0] in (None, "")
+
+
+def test_rls_blocks_the_leak_when_the_application_forgets_its_filter(acl_store):
+    """The whole reason RLS is here.
+
+    _predicate() is where correctness comes from, but it has to be passed at
+    every call site and one of them will eventually be written without it.
+    This simulates exactly that: identity set, filter omitted. The database
+    must still refuse to hand over rows the user may not see.
+    """
+    from app.store.access import AccessScope
+    zika = AccessScope(company_id="acme", user_id="zika", department_ids=("it",))
+
+    with acl_store._session(zika) as conn:
+        rows = conn.execute("SELECT chunk_id FROM test_chunks").fetchall()  # no WHERE at all
+
+    assert {r[0] for r in rows} == {"it_shared"}, "RLS did not contain an unfiltered query"
+
+
+def test_rls_is_forced_so_the_table_owner_does_not_bypass_it(acl_store):
+    """ENABLE alone exempts the table owner, and the application connects as
+    the owner -- which would make every policy above decorative."""
+    rows = acl_store.execute(
+        "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = 'test_chunks'")
+    enabled, forced = rows[0]
+    assert enabled and forced
+
+
+def test_a_superuser_connection_is_refused_rather_than_left_unprotected():
+    """Found the hard way: the first version of these tests connected as
+    postgres, RLS reported itself enabled and forced, and the containment test
+    returned every row in the table. Silent non-enforcement is the worst
+    outcome available for a security control, so it is an error now."""
+    from app.store.access import AccessScope
+    from app.store.pgvector_store import PgVectorStore
+
+    superuser_store = PgVectorStore(ADMIN_DSN, dim=4, table="test_chunks_super")
+    assert superuser_store._rls_effective is False
+
+    with pytest.raises(RuntimeError, match="bypasses row-level security"):
+        superuser_store.search([1.0, 0, 0, 0], k=5,
+                               access=AccessScope(company_id="acme", user_id="pera"))
+
+    superuser_store.execute("DROP TABLE IF EXISTS test_chunks_super")
+    superuser_store.close()
