@@ -18,6 +18,7 @@
   "trace_dir": "./traces",
 
   "store_backend": "sqlite",
+  "postgres_dsn": null,
   "top_k": 5,
   "fetch_k": 20,
   "vector_weight": 1.0,

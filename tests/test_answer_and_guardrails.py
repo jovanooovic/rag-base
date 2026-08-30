@@ -100,14 +100,43 @@ def test_guardrail_blocks_uncited_answers():
     assert not result.ok and "citation" in result.reason
 
 
-def test_guardrail_blocks_when_retrieval_score_is_below_the_floor():
-    weak = [ScoredChunk(Chunk("c", "d", "t", "s", 0), 0.05)]
-    result = check_answer(Answer("Answer [1].", used_citations=[1]), weak, min_top_score=0.3)
+def _scored(confidence: float) -> ScoredChunk:
+    """A hit as a real retriever hands it over: raw score plus the normalised
+    confidence every scorer now publishes."""
+    sc = ScoredChunk(Chunk("c", "d", "t", "s", 0), 0.05)
+    sc.signals["confidence"] = confidence
+    return sc
+
+
+def test_guardrail_blocks_when_retrieval_confidence_is_below_the_floor():
+    result = check_answer(Answer("Answer [1].", used_citations=[1]), [_scored(0.12)],
+                          min_top_score=0.3)
     assert not result.ok and "below floor" in result.reason
 
 
+def test_the_floor_reads_confidence_not_the_raw_score():
+    """The whole point of the normalisation: a reranked hit scores ~0-10 and a
+    fused-only hit ~0.033, so a threshold on .score meant two different things.
+    Here the raw score is far below the floor and the answer must still pass."""
+    hit = ScoredChunk(Chunk("c", "d", "t", "s", 0), 0.031)
+    hit.signals["confidence"] = 0.9
+
+    result = check_answer(Answer("Answer [1].", used_citations=[1]), [hit], min_top_score=0.5)
+
+    assert result.ok
+
+
+def test_guardrail_fails_closed_and_says_so_when_no_confidence_signal_exists():
+    """A hit with no confidence at all must not read as 'confidence 0.0' -- that
+    is indistinguishable from a corpus with nothing to say."""
+    bare = [ScoredChunk(Chunk("c", "d", "t", "s", 0), 0.9)]
+    result = check_answer(Answer("Answer [1].", used_citations=[1]), bare, min_top_score=0.3)
+    assert not result.ok and "no confidence signal" in result.reason
+
+
 def test_guardrail_passes_a_well_cited_answer():
-    result = check_answer(Answer("Answer [1].", used_citations=[1]), _hits(), min_top_score=0.3)
+    result = check_answer(Answer("Answer [1].", used_citations=[1]), [_scored(0.8)],
+                          min_top_score=0.3)
     assert result.ok and result.answer.text == "Answer [1]."
 
 
@@ -127,7 +156,7 @@ def test_needs_clarification_marker_is_parsed_and_stripped():
 
 
 def test_guardrail_passes_a_clarification_through_uncited_and_ignores_score_floor():
-    weak = [ScoredChunk(Chunk("c", "d", "t", "s", 0), 0.01)]
+    weak = [_scored(0.01)]
     answer = Answer("Which membership tier are you on?", used_citations=[], needs_clarification=True)
     result = check_answer(answer, weak, min_top_score=0.3)
     assert result.ok

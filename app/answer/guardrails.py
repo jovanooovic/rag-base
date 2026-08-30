@@ -58,9 +58,26 @@ def check_answer(
                                Answer(refusal_text, answered=False))
 
     if min_top_score is not None:
-        top = max((h.score for h in hits), default=0.0)
+        # signals["confidence"], not .score. The raw score's scale depends on
+        # which retrieval path ran -- roughly 0-10 from the LLM reranker, but
+        # capped near 0.033 for pure RRF fusion -- so one configured threshold
+        # meant two incompatible things, and the intake form's "strictest"
+        # preset of 0.15 was simultaneously unreachable in one mode and
+        # never-triggered in the other. Every scorer now also publishes a
+        # normalised 0-1 confidence, and the floor is defined on that.
+        scored = [h for h in hits if "confidence" in h.signals]
+        if hits and not scored:
+            # Fail closed, but say which failure this is. Silently treating a
+            # missing signal as 0.0 makes a mis-wired retriever look exactly
+            # like a corpus that has nothing to say.
+            return GuardrailResult(False,
+                                   "retrieval produced no confidence signal, so min_top_score "
+                                   "cannot be evaluated (custom retriever?)",
+                                   Answer(refusal_text, answered=False))
+        top = max((h.signals["confidence"] for h in scored), default=0.0)
         if top < min_top_score:
-            return GuardrailResult(False, f"top retrieval score {top:.3f} below floor {min_top_score}",
+            return GuardrailResult(False,
+                                   f"top retrieval confidence {top:.3f} below floor {min_top_score}",
                                    Answer(refusal_text, answered=False))
 
     if require_citations and not answer.used_citations:

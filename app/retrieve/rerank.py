@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Sequence
 
@@ -57,6 +58,11 @@ class LLMReranker:
             scores = _parse_scores(resp.text, len(batch))
             for i, sc in enumerate(batch):
                 sc.signals["rerank"] = scores[i]
+                # Overwrites the fusion confidence on purpose: the rubric score
+                # is about this passage answering this question, which is what a
+                # min_top_score floor is meant to gate on. Fusion confidence only
+                # says the retrieval legs agreed.
+                sc.signals["confidence"] = round(min(max(scores[i] / 10.0, 0.0), 1.0), 4)
                 # Fused score kept as a tiebreaker so a model that returns all
                 # zeros degrades to the retrieval order instead of to random.
                 sc.score = scores[i] + min(sc.score, 0.999) * 0.001
@@ -106,4 +112,10 @@ class CrossEncoderReranker:  # pragma: no cover - optional dependency
         for sc, score in zip(candidates, self.model.predict(pairs), strict=True):
             sc.score = float(score)
             sc.signals["rerank"] = float(score)
+            # Cross-encoder relevance models emit an unbounded logit, so squash
+            # it rather than clamping a raw value onto the 0-1 scale
+            # min_top_score is defined on. Sigmoid, not a division: bge-style
+            # rerankers are trained with a logistic objective, so this recovers
+            # the probability the logit stands for.
+            sc.signals["confidence"] = round(1.0 / (1.0 + math.exp(-float(score))), 4)
         return sorted(candidates, key=lambda s: s.score, reverse=True)[:top_k]

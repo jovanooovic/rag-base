@@ -121,8 +121,8 @@
     <div class="opts">
       <label class="opt"><input type="radio" name="corpus_size" value="under 100 documents" data-set='{"store_backend":"sqlite"}'><span>Under 100 docs</span></label>
       <label class="opt"><input type="radio" name="corpus_size" value="100 to 5,000 documents" data-set='{"store_backend":"sqlite"}'><span>100 – 5,000</span></label>
-      <label class="opt"><input type="radio" name="corpus_size" value="5,000 to 100,000 documents" data-set='{"store_backend":"pgvector"}'><span>5k – 100k</span></label>
-      <label class="opt"><input type="radio" name="corpus_size" value="over 100,000 documents" data-set='{"store_backend":"pgvector"}'><span>Over 100k</span></label>
+      <label class="opt"><input type="radio" name="corpus_size" value="5,000 to 100,000 documents" data-set='{"store_backend":"pgvector","postgres_dsn":"postgresql://user:password@host:5432/rag"}'><span>5k – 100k</span></label>
+      <label class="opt"><input type="radio" name="corpus_size" value="over 100,000 documents" data-set='{"store_backend":"pgvector","postgres_dsn":"postgresql://user:password@host:5432/rag"}'><span>Over 100k</span></label>
     </div>
   </div>
   <div class="q">
@@ -155,8 +155,8 @@
     <label class="main">When the answer isn't in the documents, what should happen?</label>
     <p class="why">Sets whether we require citations and where the refusal threshold sits.</p>
     <div class="opts">
-      <label class="opt"><input type="radio" name="unknown" value="refuse and say so" data-set='{"require_citations":true,"min_top_score":0.15}'><span>Say it doesn't know<small>strictest, recommended</small></span></label>
-      <label class="opt"><input type="radio" name="unknown" value="refuse and escalate to a human" data-set='{"require_citations":true,"min_top_score":0.15}'><span>Refuse and escalate</span></label>
+      <label class="opt"><input type="radio" name="unknown" value="refuse and say so" data-set='{"require_citations":true,"min_top_score":0.5,"use_reranker":true}'><span>Say it doesn't know<small>strictest, recommended</small></span></label>
+      <label class="opt"><input type="radio" name="unknown" value="refuse and escalate to a human" data-set='{"require_citations":true,"min_top_score":0.5,"use_reranker":true}'><span>Refuse and escalate</span></label>
       <label class="opt"><input type="radio" name="unknown" value="answer from general knowledge, clearly flagged" data-set='{"require_citations":false,"min_top_score":null}'><span>Answer anyway, flagged<small>higher risk</small></span></label>
     </div>
     <div class="note">A system that occasionally says "I don't know" is mildly annoying. One that

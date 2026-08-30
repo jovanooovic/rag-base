@@ -40,3 +40,40 @@ def test_build_embeddings_points_openrouter_at_the_right_base_url(monkeypatch):
     emb = build_embeddings(s)
     assert str(emb._client.base_url) == "https://openrouter.ai/api/v1/"
     assert emb.dim == 4096
+
+
+def test_validate_rejects_an_unknown_extra_key_with_a_suggestion():
+    """A typo'd safety knob is the dangerous case: redact_pii2 reads as
+    'redaction off' and nothing anywhere says so."""
+    s = Settings(extra={"redact_pii2": True})
+    with pytest.raises(ConfigError, match="redact_pii2"):
+        s.validate()
+    try:
+        s.validate()
+    except ConfigError as exc:
+        assert "redact_pii" in str(exc)  # the suggestion
+
+
+def test_validate_accepts_every_documented_extra_key():
+    from app.core.config import KNOWN_EXTRA_KEYS
+    extra = {k: None for k in KNOWN_EXTRA_KEYS}
+    extra.update({"store_backend": "sqlite", "min_top_score": None, "use_reranker": True})
+    Settings(extra=extra).validate()  # must not raise
+
+
+def test_pgvector_without_a_dsn_is_a_clear_config_error_not_a_keyerror():
+    with pytest.raises(ConfigError, match="postgres_dsn"):
+        Settings(extra={"store_backend": "pgvector"}).validate()
+
+
+def test_min_top_score_outside_zero_to_one_is_rejected():
+    """The old raw-score scale invited values like 0.15 that meant nothing."""
+    with pytest.raises(ConfigError, match="between 0.0 and 1.0"):
+        Settings(extra={"min_top_score": 7.5}).validate()
+
+
+def test_min_top_score_without_a_reranker_is_rejected():
+    """Fusion confidence measures leg agreement, not relevance -- a floor on it
+    would be a false sense of protection."""
+    with pytest.raises(ConfigError, match="use_reranker"):
+        Settings(extra={"min_top_score": 0.5, "use_reranker": False}).validate()

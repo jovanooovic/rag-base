@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import json
 import os
 from dataclasses import dataclass, field
@@ -9,6 +10,23 @@ from typing import Any
 from .errors import ConfigError
 
 DEFAULT_CONFIG_NAME = "project.config.json"
+
+# Every key a base may legitimately carry in `extra`. Anything else in the
+# config file is a typo, and a typo here is silent: `redact_pii2: true` reads
+# as "PII redaction off" with no warning at all, which is the worst possible
+# way to discover a setting never took effect. Adding a knob means adding it
+# here -- the small friction is the point.
+KNOWN_EXTRA_KEYS: frozenset[str] = frozenset({
+    # storage
+    "store_backend", "postgres_dsn",
+    # retrieval
+    "top_k", "fetch_k", "vector_weight", "keyword_weight",
+    "use_reranker", "rewrite_queries",
+    # answering
+    "max_context_chars", "require_citations", "min_top_score", "redact_pii",
+    # chat console branding (see /health)
+    "brand_accent", "brand_description", "show_source_link",
+})
 
 
 def _find_config(start: Path | None = None) -> Path | None:
@@ -103,6 +121,42 @@ class Settings:
             raise ConfigError("embedding_dim must be positive")
         if self.max_cost_usd_per_run <= 0:
             raise ConfigError("max_cost_usd_per_run must be positive")
+
+        unknown = sorted(set(self.extra) - KNOWN_EXTRA_KEYS)
+        if unknown:
+            hints = []
+            for key in unknown:
+                close = difflib.get_close_matches(key, KNOWN_EXTRA_KEYS, n=1, cutoff=0.7)
+                hints.append(f"{key!r}" + (f" (did you mean {close[0]!r}?)" if close else ""))
+            raise ConfigError(
+                f"unknown setting(s) in {DEFAULT_CONFIG_NAME}: {', '.join(hints)}. "
+                "An unrecognised key is silently ignored, which for a safety knob like "
+                "redact_pii means the protection you configured is simply off."
+            )
+
+        if self.extra.get("store_backend") == "pgvector" and not self.extra.get("postgres_dsn"):
+            raise ConfigError(
+                'store_backend "pgvector" requires a "postgres_dsn" -- e.g. '
+                '"postgresql://user:pass@host:5432/rag". Set it in '
+                f"{DEFAULT_CONFIG_NAME}, or keep the default sqlite backend."
+            )
+
+        floor = self.extra.get("min_top_score")
+        if floor is not None:
+            if not isinstance(floor, (int, float)) or not 0.0 <= float(floor) <= 1.0:
+                raise ConfigError(
+                    f"min_top_score must be between 0.0 and 1.0 (got {floor!r}). It is a "
+                    "normalised confidence, not a raw retrieval score -- see "
+                    "app/retrieve/hybrid.py."
+                )
+            if not self.extra.get("use_reranker", True):
+                raise ConfigError(
+                    "min_top_score needs use_reranker: true. Without a reranker the only "
+                    "available confidence comes from rank fusion, which measures whether "
+                    "the retrieval legs agreed -- not whether the passage answers the "
+                    "question. A floor on it would refuse real answers and admit "
+                    "confident nonsense, which is worse than no floor at all."
+                )
 
     def api_key(self, provider: str, env: dict[str, str] | None = None) -> str:
         env = dict(os.environ if env is None else env)

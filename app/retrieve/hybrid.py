@@ -30,8 +30,16 @@ def reciprocal_rank_fusion(
                 acc[cid] = ScoredChunk(sc.chunk, 0.0, {})
             acc[cid].signals.update(sc.signals)
             acc[cid].signals[f"rank_leg{leg}"] = float(rank)
+
+    # Best achievable fused score: every *contributing* leg ranks it first.
+    # Counted by weight rather than by len(rankings) because a leg weighted 0
+    # contributes nothing -- the dense-only and bm25-only rows of the ablation
+    # matrix run exactly that way, and dividing by 2 there would cap confidence
+    # at 0.5 for a unanimous top hit.
+    best = sum(w for w in weights if w > 0) / (k + 1)
     for cid, score in fused.items():
         acc[cid].score = score
+        acc[cid].signals["confidence"] = round(score / best, 4) if best else 0.0
     return sorted(acc.values(), key=lambda s: s.score, reverse=True)
 
 
