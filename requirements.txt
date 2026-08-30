@@ -23,4 +23,6 @@ openpyxl>=3.1
 # Optional, install only when the client's data or scale needs it:
 # psycopg[binary]>=3.1       # pgvector store backend (multi-user tier)
 # psycopg-pool>=3.2          # one connection per request -- see PgVectorStore
+# argon2-cffi>=23.1         # password hashing for the multi-user tier
+# pyjwt>=2.8                 # session tokens
 # sentence-transformers>=3.0 # local cross-encoder reranker

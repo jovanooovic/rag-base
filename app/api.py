@@ -11,13 +11,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Cookie, Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .answer.guardrails import redact
+from .core import auth
 from .core.config import Settings
+from .core.ratelimit import RateLimiter
 from .core.providers import Message
 from .core.trace import Trace
 from .ingest.loaders import SUPPORTED as SUPPORTED_EXTENSIONS
@@ -61,25 +63,47 @@ def get_directory():
     return Directory(settings.extra["postgres_dsn"])
 
 
-def current_scope(x_debug_user: str = Header(default="", alias="X-Debug-User")
-                  ) -> AccessScope | None:
-    """Who this request runs as.
+SESSION_COOKIE = "rag_session"
 
-    TEMPORARY: identity comes from a header any caller can set, which is no
-    identity at all. It exists so the isolation layer can be built and tested
-    before authentication lands, in that order deliberately -- auth first and
-    isolation second gives you a system where everyone logs in and still sees
-    everything. It is deleted in the auth phase, not left behind a flag.
+# Failed logins only; see RateLimiter for why successes are not counted.
+_LOGIN_LIMITER = RateLimiter(max_attempts=10, window_seconds=300.0)
+
+
+def current_user_id(session: str = Cookie(default="", alias=SESSION_COOKIE),
+                    authorization: str = Header(default="")) -> str | None:
+    """The user this request is signed in as, from cookie or bearer token.
+
+    Cookie for the browser console, bearer for API clients. Both carry the same
+    signed token; neither is trusted further than its signature.
+    """
+    token = session
+    if not token and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+    if not token:
+        return None
+    try:
+        return auth.read_token(token, secret=auth.secret_key())
+    except auth.AuthError:
+        return None
+
+
+def current_scope(user_id: str | None = Depends(current_user_id)) -> AccessScope | None:
+    """Who this request runs as, as a retrieval boundary.
+
+    Built from the directory on every request rather than carried in the token.
+    A token that carried memberships would keep granting access to a department
+    someone was removed from until it expired; deriving it means removal takes
+    effect on the next request.
     """
     settings = get_settings()
     if not settings.extra.get("multi_tenant"):
         return None
-    if not x_debug_user:
-        raise HTTPException(401, "no identity on this request")
-    directory = get_directory()
+    if not user_id:
+        raise HTTPException(401, "not signed in")
     try:
-        return directory.scope_for(x_debug_user)
+        return get_directory().scope_for(user_id)
     except LookupError as exc:
+        # The account was deleted while a valid token was still in the wild.
         raise HTTPException(401, "unknown user") from exc
 
 
@@ -159,6 +183,178 @@ def _safe_filename(name: str) -> str:
     name = Path(name).name  # strip any directory components -- no path traversal
     name = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip("._") or "upload"
     return name
+
+
+class RegisterRequest(BaseModel):
+    company_name: str = Field(min_length=1, max_length=200)
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class CreateUserRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=1024)
+    department_id: str | None = None
+    role: str = Field(default="member", pattern="^(member|manager)$")
+
+
+def _require_multi_tenant() -> Settings:
+    settings = get_settings()
+    if not settings.extra.get("multi_tenant"):
+        raise HTTPException(404, "authentication is only used in the multi-user tier")
+    return settings
+
+
+def _is_secure_request(request: Request) -> bool:
+    """Whether this request actually arrived over TLS.
+
+    A Secure cookie is never sent back over plain HTTP, so hardcoding
+    secure=True breaks every http:// deployment silently: login returns 200,
+    sets a cookie the browser then refuses to send, and every subsequent
+    request is anonymous. Hardcoding False is worse -- it ships the session
+    over the wire in the clear.
+
+    So: mark it Secure exactly when the connection is secure. x-forwarded-proto
+    covers the usual case of TLS terminated at a proxy or tunnel, where the app
+    itself only ever sees http. A forged header can only make the cookie more
+    restrictive, never less.
+    """
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return request.url.scheme == "https" or forwarded == "https"
+
+
+def _set_session_cookie(response: Response, token: auth.SessionToken,
+                        request: Request) -> None:
+    response.set_cookie(
+        SESSION_COOKIE, token.value,
+        httponly=True,      # unreadable from JavaScript, so XSS cannot exfiltrate it
+        samesite="strict",  # the CSRF defence: no cross-site request carries it
+        secure=_is_secure_request(request),
+        max_age=int(auth.TOKEN_TTL.total_seconds()),
+        path="/",
+    )
+
+
+@app.post("/auth/register")
+def register(req: RegisterRequest, response: Response, request: Request) -> dict[str, Any]:
+    """Create a company and its first user, who manages it.
+
+    Whoever signs the company up is by definition its first manager -- there is
+    nobody to approve them, and an unmanaged company cannot approve its own
+    first document. Everyone after them is created by a manager.
+    """
+    _require_multi_tenant()
+    directory = get_directory()
+    try:
+        email = auth.validate_email(req.email)
+        password_hash = auth.hash_password(req.password)
+    except auth.AuthError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    if directory.find_user_by_email(email) is not None:
+        raise HTTPException(409, "that email is already registered")
+
+    company_id = directory.create_company(req.company_name.strip())
+    user_id = directory.create_user(company_id, email, password_hash)
+    department_id = directory.create_department(company_id, "General")
+    directory.add_membership(user_id, department_id, "manager")
+
+    token = auth.issue_token(user_id, secret=auth.secret_key())
+    _set_session_cookie(response, token, request)
+    return {"user_id": user_id, "company_id": company_id, "department_id": department_id}
+
+
+@app.post("/auth/login")
+def login(req: LoginRequest, response: Response, request: Request) -> dict[str, Any]:
+    _require_multi_tenant()
+    directory = get_directory()
+    email = req.email.strip().lower()
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Both keys must be under the limit: per-email alone lets an attacker lock
+    # out any account on purpose, per-IP alone lets a botnet spread out.
+    keys = (f"email:{email}", f"ip:{client_ip}")
+    if not all(_LOGIN_LIMITER.check(k) for k in keys):
+        raise HTTPException(429, "too many failed attempts -- wait a few minutes")
+
+    record = directory.find_user_by_email(email)
+    # Runs the hash either way; see verify_password on why a missing account
+    # must not return faster than a wrong password.
+    if not auth.verify_password(record["password_hash"] if record else None, req.password):
+        for k in keys:
+            _LOGIN_LIMITER.record(k)
+        # One message for both cases, so this cannot be used to discover which
+        # addresses have accounts.
+        raise HTTPException(401, "incorrect email or password")
+
+    for k in keys:
+        _LOGIN_LIMITER.reset(k)
+    if auth.needs_rehash(record["password_hash"]):
+        directory.set_password_hash(record["id"], auth.hash_password(req.password))
+
+    token = auth.issue_token(record["id"], secret=auth.secret_key())
+    _set_session_cookie(response, token, request)
+    return {"user_id": record["id"], "company_id": record["company_id"]}
+
+
+@app.post("/auth/logout")
+def logout(response: Response) -> dict[str, Any]:
+    """Clears the cookie. The token stays valid until it expires -- honest
+    limitation of stateless sessions, and the reason the TTL is 12 hours rather
+    than a month. Real revocation needs a server-side session table."""
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"signed_out": True}
+
+
+@app.get("/auth/me")
+def me(user_id: str | None = Depends(current_user_id)) -> dict[str, Any]:
+    _require_multi_tenant()
+    if not user_id:
+        raise HTTPException(401, "not signed in")
+    directory = get_directory()
+    scope = directory.scope_for(user_id)
+    return {"user_id": user_id, "company_id": scope.company_id,
+            "department_ids": list(scope.department_ids),
+            "manages": directory.managed_departments(user_id)}
+
+
+@app.post("/users")
+def create_user(req: CreateUserRequest,
+                user_id: str | None = Depends(current_user_id)) -> dict[str, Any]:
+    """A manager adds someone to their own company.
+
+    Not open registration: /auth/register creates a company, this adds people
+    to one. The company is taken from the caller's own record rather than the
+    request body, so a manager cannot create users inside somebody else's.
+    """
+    _require_multi_tenant()
+    if not user_id:
+        raise HTTPException(401, "not signed in")
+    directory = get_directory()
+    managed = directory.managed_departments(user_id)
+    if not managed:
+        raise HTTPException(403, "only a manager can add users")
+    if req.department_id and req.department_id not in managed:
+        raise HTTPException(403, "you do not manage that department")
+
+    caller = directory.scope_for(user_id)
+    try:
+        email = auth.validate_email(req.email)
+        password_hash = auth.hash_password(req.password)
+    except auth.AuthError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if directory.find_user_by_email(email) is not None:
+        raise HTTPException(409, "that email is already registered")
+
+    new_user = directory.create_user(caller.company_id, email, password_hash)
+    if req.department_id:
+        directory.add_membership(new_user, req.department_id, req.role)
+    return {"user_id": new_user}
 
 
 @app.get("/health")

@@ -155,6 +155,12 @@ class Directory:
             return None
         return {"id": row[0], "company_id": row[1], "email": row[2], "password_hash": row[3]}
 
+    def set_password_hash(self, user_id: str, password_hash: str) -> None:
+        """Used to upgrade a hash in place when argon2's tuning moves on."""
+        with self._conn() as conn:
+            conn.execute("UPDATE users SET password_hash = %s WHERE id = %s",
+                         (password_hash, user_id))
+
     def manages(self, user_id: str, department_id: str) -> bool:
         with self._conn() as conn:
             row = conn.execute(
