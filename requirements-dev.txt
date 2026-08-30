@@ -3,3 +3,7 @@ pytest>=8.0
 mypy>=1.10
 ruff>=0.5
 Pillow>=10.0   # make scorecard-png only
+# Dev-only: PgVectorStore stays an optional dependency for users (see
+# requirements.txt), but its tests need the driver present to run at all.
+# They skip themselves unless RAG_TEST_POSTGRES_DSN points at a live server.
+psycopg[binary]>=3.1

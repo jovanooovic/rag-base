@@ -24,7 +24,36 @@ class PgVectorStore:  # pragma: no cover - needs a live Postgres
         self.dim = dim
         self.table = table
         self.conn = psycopg.connect(dsn, autocommit=True)
+        self._iterative_scan = self._enable_iterative_scan()
         self._migrate()
+
+    def _enable_iterative_scan(self) -> bool:
+        """Make filtered vector search return the k rows it was asked for.
+
+        HNSW searches the index first and applies the WHERE clause to whatever
+        it found, so a selective filter throws most of the result away and the
+        query returns short -- silently, with no error. Measured on this store:
+        4000 rows, filter matching 100 of them, k=10, index forced -> **1 row
+        back** with this off, 10 with it on.
+
+        It only bites once the planner actually chooses the index. Below a few
+        thousand rows a sequential scan is cheaper, filtering is exact, and
+        everything looks correct -- so this passes every small-corpus test and
+        starts losing results on the client's production corpus instead.
+
+        strict_order rather than relaxed_order: relaxed can return rows
+        slightly out of distance order, and those distances feed RRF ranking
+        upstream. Needs pgvector >= 0.8; older servers reject the parameter,
+        which is handled in search() rather than here -- an unfiltered corpus
+        is unaffected, so refusing to start would punish people this cannot
+        hurt.
+        """
+        import psycopg  # type: ignore
+        try:
+            self.conn.execute("SET hnsw.iterative_scan = strict_order")
+            return True
+        except psycopg.errors.UndefinedObject:
+            return False
 
     def _migrate(self) -> None:
         self.conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
@@ -69,6 +98,16 @@ class PgVectorStore:  # pragma: no cover - needs a live Postgres
             score, {signal: score})
 
     def search(self, vector, k: int = 10, where: dict[str, Any] | None = None) -> list[ScoredChunk]:
+        if where and not self._iterative_scan:
+            # Refused here rather than at connect: this is the exact moment the
+            # missing feature would start dropping rows without saying so, and
+            # a store used without filters is genuinely fine on 0.7.
+            raise RuntimeError(
+                "filtered vector search needs pgvector >= 0.8 (hnsw.iterative_scan); "
+                "this server is older, and filtered searches would silently return "
+                "fewer rows than requested once the corpus is large enough for the "
+                "planner to use the HNSW index. Upgrade pgvector, or drop the filter."
+            )
         clause, params = _where(where)
         sql = (f"SELECT chunk_id, doc_id, text, source, ordinal, heading_path, metadata, "
                f"1 - (embedding <=> %s::vector) AS score FROM {self.table} {clause} "

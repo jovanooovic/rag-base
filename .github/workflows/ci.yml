@@ -4,6 +4,22 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      # pg17 with pgvector >= 0.8: the store's filtered-search tests assert on
+      # hnsw.iterative_scan behaviour, which does not exist before 0.8. Without
+      # this service those tests skip themselves and the silent-row-loss
+      # regression they guard would come back unnoticed.
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: dev
+          POSTGRES_DB: rag
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rag"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      RAG_TEST_POSTGRES_DSN: postgresql://postgres:dev@localhost:5432/rag
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
