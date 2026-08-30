@@ -25,6 +25,18 @@ class IngestReport:
         return self.__dict__.copy()
 
 
+# Bump when a change must reach chunks whose *text* is unchanged -- the
+# fingerprint is text-only, so new metadata (effective_date, say) would
+# otherwise be skipped forever on an existing index and the feature would look
+# broken on every machine that had ingested before.
+#
+# The alternative, folding metadata into the fingerprint, is worse: it would
+# put ingestion timestamps in the hash and re-embed the entire corpus nightly,
+# which is the exact cost this class exists to avoid. A version bump forces one
+# reindex, deliberately, at a moment someone chose.
+STATE_VERSION = 2
+
+
 def _fingerprint(chunk: Chunk) -> str:
     return hashlib.sha256(chunk.text.encode()).hexdigest()[:16]
 
@@ -46,11 +58,16 @@ class Ingestor:
         self.state_path = Path(state_path or Path(settings.data_dir) / "ingest_state.json")
         self.state: dict[str, str] = {}
         if self.state_path.is_file():
-            self.state = json.loads(self.state_path.read_text())
+            raw = json.loads(self.state_path.read_text())
+            # Older state files are a bare {chunk_id: fingerprint} mapping with
+            # no version, which is exactly the shape that needs discarding.
+            if isinstance(raw, dict) and raw.get("version") == STATE_VERSION:
+                self.state = dict(raw.get("chunks", {}))
 
     def _save_state(self) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(json.dumps(self.state, indent=2))
+        self.state_path.write_text(
+            json.dumps({"version": STATE_VERSION, "chunks": self.state}, indent=2))
 
     def ingest_documents(self, docs: Iterable[Document], *, batch_size: int = 64,
                          chunk_kwargs: dict[str, Any] | None = None) -> IngestReport:

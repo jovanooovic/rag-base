@@ -22,6 +22,7 @@ KNOWN_EXTRA_KEYS: frozenset[str] = frozenset({
     # retrieval
     "top_k", "fetch_k", "vector_weight", "keyword_weight",
     "use_reranker", "rewrite_queries",
+    "recency_weight", "recency_half_life_days",
     # answering
     "max_context_chars", "require_citations", "min_top_score", "redact_pii",
     # chat console branding (see /health)

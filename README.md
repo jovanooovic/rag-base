@@ -181,6 +181,54 @@ lesson the reranker rows teach in the scorecard above.
 `reranker: cross-encoder` rows report `skipped` unless `sentence-transformers` is
 installed — that's an optional dependency, not a missing feature.
 
+## Recency: when the old manual and the new one are both in the drive
+
+Every intake conversation eventually surfaces the same problem — *"there's a document
+everyone knows is out of date, but nobody deleted it"* — and pure relevance ranking has
+no answer to it. Both versions match the question; the superseded one often matches
+better, because it was written when the wording was current.
+
+`recency_weight` (0 by default) blends document age into ranking after reranking.
+Documents carry an `effective_date` in YAML front matter; `mtime` is the fallback, and
+a poor one — git does not preserve it, so a fresh clone stamps every file with checkout
+time. The corpus for this lives in `data/sample_superseded/` (a 2024 and a 2026 returns
+policy that contradict each other on three points) with its own suite,
+`eval/data/golden_recency.jsonl`, deliberately separate from the main 147 so it cannot
+move those numbers.
+
+Measured at a fixed `now` of 2026-08-30, five cases:
+
+| `recency_weight` | correct document at rank 1 |
+|---|---|
+| 0.0 (off) | 0.20 |
+| 0.3 | 0.40 |
+| 0.5 | **1.00** |
+
+With recency off, the superseded 2024 policy outranks the current one in four cases out
+of five. That is the failure mode stated back as a number.
+
+**The interesting part is what it did not fix.** I also tried to measure "does the answer
+repeat a stale claim", by checking whether phrases from the 2024 policy appear in the
+answer. That number sat at 0.40 at *every* weight, including the one where retrieval was
+perfect — which looked like recency ranking being useless for answer quality. Reading the
+actual answers showed the metric was wrong, not the system:
+
+> Customers may return any unopened item within 30 days of delivery for a full refund
+> according to the 2026 policy [1]. However, under the 2024 policy, the return window for
+> unopened items is 14 days [2].
+
+The stale phrase is there, correctly attributed to the superseded document. That is rule 4
+of the answer prompt — *if sources disagree, say so explicitly and cite both* — working as
+designed, and a substring check cannot tell it apart from a genuine stale claim. One case
+asked which policy version the reader meant, rather than answering, which is arguably the
+best available behaviour. So the metric was dropped instead of published: a number that
+counts correct behaviour as failure is worse than no number.
+
+What this leaves honestly unresolved: both versions still reach the model's context, and
+nothing marks one as authoritative. Ranking decides what is *seen first*, not what is
+*believed*. Filtering superseded documents out of retrieval entirely — the `supersedes:`
+front-matter key is parsed but not yet acted on — is the real fix, and it is not built.
+
 ## Quickstart
 
 ```bash
@@ -388,6 +436,15 @@ evidence is signalling something no benchmark table can.
   both `.html` and `.md`. But a `.docx` can hide an instruction as white-on-white text
   or with Word's own hidden-text attribute, and `python-docx` reads it as ordinary
   paragraph text. Same for a spreadsheet cell in a hidden column or sheet.
+- **Recency ranking orders results; it does not decide what the model believes.** Both
+  versions of a superseded document still reach the context window, and nothing marks
+  one as authoritative. `supersedes:` is parsed from front matter and currently unused —
+  filtering the superseded document out of retrieval is the actual fix and is not built.
+- **`effective_date` falls back to `mtime`, which is close to meaningless under git.**
+  Git does not preserve modification times, so a fresh clone stamps every file with
+  checkout time and recency becomes a constant. Documents that matter need the front
+  matter; `date_source` in chunk metadata records which was used, so this is at least
+  visible rather than silent.
 - **`POST /feedback` is the only write endpoint with no token, and it has a bound, not
   a rate limit.** It has to be open — the value is that whoever spotted the wrong
   answer can say so, and they will not have an admin token. The file is capped at 5MB

@@ -5,6 +5,7 @@ import io
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Iterator
@@ -51,6 +52,52 @@ def load_html(raw: str) -> str:
     p = _HTMLText()
     p.feed(raw)
     return p.text()
+
+
+_FRONT_MATTER_RE = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
+_ISO_DATE_RE = re.compile(r"\A(\d{4})-(\d{2})-(\d{2})")
+
+
+def split_front_matter(text: str) -> tuple[dict[str, str], str]:
+    """Pull a leading `--- key: value ---` block off a document.
+
+    Deliberately not YAML: the only thing this needs to read is a handful of
+    flat scalars (`effective_date`, `supersedes`), and a real YAML parser is a
+    dependency plus a parser that executes more of the file than intended.
+
+    The block is *removed* from the returned text, not just read. Left in
+    place, `_sections()` in chunking.py treats it as body content and produces
+    a junk chunk with an empty heading -- which then competes for retrieval
+    against real content.
+    """
+    match = _FRONT_MATTER_RE.match(text)
+    if not match:
+        return {}, text
+    meta: dict[str, str] = {}
+    for line in match.group(1).splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key.strip():
+            meta[key.strip()] = value.strip().strip("'\"")
+    return meta, text[match.end():]
+
+
+def parse_effective_date(value: str) -> str | None:
+    """Accept an ISO date, reject anything else rather than guessing.
+
+    A date that silently fails to parse would make a document look undated,
+    which under recency weighting means "as old as possible" -- a document
+    would sink in the ranking because of a typo in its header, with nothing
+    reporting it.
+    """
+    m = _ISO_DATE_RE.match(value.strip())
+    if not m:
+        return None
+    year, month, day = (int(g) for g in m.groups())
+    try:
+        date(year, month, day)
+    except ValueError:
+        return None
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 
 def load_csv(raw: str) -> str:
@@ -217,11 +264,30 @@ def load_path(path: str | Path) -> Iterator[Document]:
         # Applied here rather than in each loader so every format -- including
         # ones added later -- gets it without anyone having to remember.
         text = strip_invisible(LOADERS[ext](f))
+        front, text = split_front_matter(text)
         if not text.strip():
             continue
-        yield Document(
-            doc_id=f.as_posix(),
-            text=text,
-            source=f.as_posix(),
-            metadata={"filename": f.name, "ext": ext, "bytes": f.stat().st_size},
-        )
+
+        meta: dict[str, Any] = {"filename": f.name, "ext": ext, "bytes": f.stat().st_size}
+        raw_date = front.get("effective_date", "")
+        effective = parse_effective_date(raw_date) if raw_date else None
+        if raw_date and effective is None:
+            raise ValueError(
+                f"{f.name}: effective_date {raw_date!r} is not an ISO date (YYYY-MM-DD). "
+                "Leaving it unparsed would make the document look undated, which under "
+                "recency weighting means 'as old as possible'."
+            )
+        if effective:
+            meta["effective_date"] = effective
+            meta["date_source"] = "front_matter"
+        else:
+            # mtime is a weak fallback and the README says so: git does not
+            # preserve it, so a fresh clone stamps every file with checkout
+            # time. Good enough for a live client folder, useless for a repo.
+            meta["effective_date"] = datetime.fromtimestamp(
+                f.stat().st_mtime, tz=timezone.utc).date().isoformat()
+            meta["date_source"] = "mtime"
+        if front.get("supersedes"):
+            meta["supersedes"] = front["supersedes"]
+
+        yield Document(doc_id=f.as_posix(), text=text, source=f.as_posix(), metadata=meta)

@@ -102,6 +102,8 @@ class RAGPipeline:
             vector_weight=float(ex.get("vector_weight", 1.0)),
             keyword_weight=float(ex.get("keyword_weight", 1.0)),
             reranker=reranker,
+            recency_weight=float(ex.get("recency_weight", 0.0)),
+            recency_half_life_days=float(ex.get("recency_half_life_days", 365.0)),
         )
         self.ingestor = Ingestor(self.store, self.settings, self.embeddings)
 
